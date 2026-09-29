@@ -2,9 +2,9 @@
 
 ## Activation condition
 
-This handoff becomes active only after Step 0 is committed and pushed. If
-`docs/ci/CI_STATE.md` still reports Step 0 as `IN_PROGRESS`, stop and finish
-Step 0 instead of starting Step 1.
+Step 0 is complete. Before starting Step 1, verify that the actual branch,
+HEAD, remote, and working tree agree with `docs/ci/CI_STATE.md`. Stop and
+investigate any mismatch.
 
 ## Step
 

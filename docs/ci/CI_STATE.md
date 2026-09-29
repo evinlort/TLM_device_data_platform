@@ -3,20 +3,22 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`
-- HEAD: the commit containing this file is the local Step 0 bootstrap baseline;
-  use `git rev-parse HEAD` to obtain its exact SHA without creating a
+- HEAD: the commit containing this file completes Step 0; use
+  `git rev-parse HEAD` to obtain its exact SHA without creating a
   self-referential state update.
-- Remote: none configured.
+- Remote: `origin` is
+  `https://github.com/evinlort/TLM_device_data_platform.git`.
+- GitHub repository: private `evinlort/TLM_device_data_platform` with `main`
+  as the default branch.
 - GitHub CLI: version 2.86.0-112-gc30647b78 is authenticated to `github.com`
   as active account `evinlort` using HTTPS for Git operations.
-- Working tree before Step 0 implementation: the master prompt was the only
-  untracked file. Revalidate the working tree after the approved commit.
+- Working tree before the final Step 0 state update: clean.
 
 ## Current milestone
 
 - Step: Step 0 — Repository audit and CI state bootstrap
-- Status: IN_PROGRESS
-- Completion blockers: remote configuration, final state update, and push.
+- Status: DONE
+- Completion blockers: none.
 
 ## Verified facts
 
@@ -33,12 +35,14 @@
 - Local Docker reports 29.7.2.
 - Local Supabase CLI is not installed.
 - GitHub CLI authentication is configured and verified for account `evinlort`.
-- GitHub repository `evinlort/TLM_device_data_platform` does not currently
-  exist.
+- GitHub repository `evinlort/TLM_device_data_platform` exists and is private.
+- `main` was initialized from the reviewed Step 0 root commit and is the
+  default branch. Ongoing work remains on `ci/github-actions-foundation`.
 
 ## Implemented
 
-- Step 0 coordination/state files are included in the local bootstrap commit.
+- Step 0 coordination/state files and the unchanged master prompt are stored
+  in Git and published to the private GitHub repository.
 - No application, CI workflow, simulator, or database implementation exists.
 
 ## Validation
@@ -62,18 +66,24 @@ Commands executed during the audit:
 - `gh --version`
 - `gh auth status`
 - `gh repo view evinlort/TLM_device_data_platform --json nameWithOwner,url,isPrivate,defaultBranchRef`
+- `gh repo create evinlort/TLM_device_data_platform --private --source=. --remote=origin`
+- `git push -u origin ci/github-actions-foundation`
+- `git push origin e7d049db9e89eab661539c3dbd79fa58f193ae9c:refs/heads/main`
+- `gh repo edit evinlort/TLM_device_data_platform --default-branch main`
+- `git ls-remote --heads origin`
 - `git diff --cached --check -- AGENTS.md docs/ci`
 
 Results:
 
 - Repository inventory and absence claims above are verified.
-- `git rev-parse HEAD` fails as expected for an unborn branch.
+- The initial `git rev-parse HEAD` failed as expected for an unborn branch;
+  the reviewed root commit was then created successfully.
 - Whitespace validation passes for all Step 0 coordination files.
 - A global staged whitespace check reports the original master prompt's
   intentional two-space Markdown line breaks; the source document is kept
   unchanged.
-- GitHub CLI authentication passes. The expected GitHub repository lookup
-  fails because that repository has not been created.
+- GitHub CLI authentication, private repository creation, remote branch
+  publication, and default-branch verification pass.
 - No tests or workflows can be executed yet.
 
 ## Current CI
@@ -103,9 +113,7 @@ See `docs/ci/CI_PLAN.md` for the fuller list and affected future milestones.
 
 ## Technical blockers
 
-- Git remote is not configured because the expected GitHub repository does
-  not exist. Repository visibility must be chosen before creating it with
-  GitHub CLI, finalizing Step 0, and pushing.
+- None for Step 1.
 
 ## Files changed in the current step
 
@@ -115,9 +123,10 @@ See `docs/ci/CI_PLAN.md` for the fuller list and affected future milestones.
 - `docs/ci/NEXT_SESSION.md`
 - `docs/ci/BOOTSTRAP_PROMPT.md`
 - `docs/ci/DECISIONS.md`
+- `TLM GitHub CI — Codex Master Prompt (пошаговая работа между сессиями).md`
 
-The existing master prompt is intentionally unchanged and is included in the
-local bootstrap commit so a future fresh checkout retains the process source.
+The existing master prompt is intentionally unchanged and is included in Git
+so a fresh checkout retains the process source.
 
 ## Next step
 
@@ -130,4 +139,5 @@ local bootstrap commit so a future fresh checkout retains the process source.
 - Validation required: clean-environment installation plus the established
   test/lint commands.
 
-Step 1 must not start until Step 0 is committed and pushed.
+Step 1 must start in a new Codex session using
+`docs/ci/BOOTSTRAP_PROMPT.md`.

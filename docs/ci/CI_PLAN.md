@@ -26,7 +26,7 @@ simulator, Supabase configuration, or GitHub Actions workflow.
 
 ### Step 0 — Repository audit and CI state bootstrap
 
-Status: IN_PROGRESS
+Status: DONE
 
 Acceptance criteria:
 

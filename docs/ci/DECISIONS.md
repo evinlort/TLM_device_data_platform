@@ -80,3 +80,31 @@ Consequences:
 Source:
 
 `TLM GitHub CI — Codex Master Prompt (пошаговая работа между сессиями).md`
+
+## CI-DEC-004 — Initial default branch bootstrap
+
+Status: ACCEPTED
+
+Decision:
+
+Initialize remote `main` from the reviewed Step 0 root commit and use it as the
+GitHub default branch. Keep ongoing CI implementation work on
+`ci/github-actions-foundation` until changes are explicitly approved for
+merge.
+
+Reason:
+
+The new GitHub repository had no branches. Its first feature-branch push was
+temporarily selected as the default branch, while the agreed workflow requires
+a stable `main` base and feature-branch development.
+
+Consequences:
+
+- The approved Step 0 bootstrap is the initial `main` baseline.
+- New implementation commits are not made directly on `main`.
+- Pull Requests can target a stable default branch.
+
+Source:
+
+Step 0 repository initialization and the Git workflow requirements in
+`TLM GitHub CI — Codex Master Prompt (пошаговая работа между сессиями).md`.
