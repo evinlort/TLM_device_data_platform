@@ -2,71 +2,99 @@
 
 ## Activation condition
 
-Step 2 implementation and local validation are complete but uncommitted.
-Continue only after verifying the actual branch, HEAD, remote, working tree,
-and diff against `docs/ci/CI_STATE.md`. Investigate any mismatch before
-changing files.
+Step 2 is complete. Before starting Step 3, verify that the actual branch,
+HEAD, remote, clean working tree, Pull Request, and latest required CI result
+agree with `docs/ci/CI_STATE.md`. Stop and investigate any mismatch.
 
 ## Step
 
-Continue Step 2 — approve, publish, and remotely validate the Python GitHub
-Actions foundation.
+Step 3 — Define deterministic simulator boundaries
 
-This is completion work for Step 2, not permission to begin Step 3.
+## Read first
 
-## Current verified starting point
+1. `AGENTS.md`
+2. `docs/ci/CI_STATE.md`
+3. `docs/ci/CI_PLAN.md`
+4. `docs/ci/NEXT_SESSION.md`
+5. `docs/ci/DECISIONS.md`
 
-- Branch: `ci/github-actions-foundation`.
-- Base HEAD: the approved Step 1 commit.
-- `.github/workflows/ci.yml` is implemented locally and remains uncommitted.
-- Clean Python 3.11 installation, `pip check`, and pytest pass.
-- Workflow YAML syntax and explicit security/semantics assertions pass.
-- The action release tags and full upstream SHAs are verified.
-- No remote Pull Request ref exists yet.
-- Commit and push require explicit user approval.
+Additional files relevant to this step:
+
+- `pyproject.toml`
+- `requirements/test.txt`
+- `src/tlm_device_data_platform/__init__.py`
+- `tests/test_package.py`
+- `.github/workflows/ci.yml`
+
+Do not read unrelated future files unless the current step requires them.
 
 ## Goal
 
-Complete Step 2 by reviewing the prepared diff, obtaining explicit approval,
-committing and pushing it, opening a Pull Request to `main`, and confirming an
-actual successful `CI / Python 3.11` GitHub Actions check.
+Define the smallest provider-independent boundaries for a deterministic fake
+sensor, controllable clock, transport, and temporary durable queue. Prove their
+deterministic behavior with unit tests without defining product telemetry,
+timing, capacity, credential, or authorization requirements.
 
-## Required sequence
+## Current verified starting point
 
-1. Read `AGENTS.md`, `docs/ci/CI_STATE.md`, `docs/ci/CI_PLAN.md`, this file,
-   and `docs/ci/DECISIONS.md`.
-2. Verify `git status`, branch, HEAD, remote, and the complete diff.
-3. Re-run local validation if the implementation or environment changed.
-4. Show the user the validation results and diff summary.
-5. Obtain explicit approval before commit or push.
-6. Commit and push the Step 2 changes.
-7. Open a Pull Request from `ci/github-actions-foundation` to `main` using a
-   concise English title and body that describe only Steps 1 and 2.
-8. Verify the resulting `CI / Python 3.11` check and inspect failure logs if
-   it is not green.
-9. After the remote check is green, update the persistent handoff:
-   - mark Step 2 DONE in `docs/ci/CI_PLAN.md`;
-   - record the verified GitHub run in `docs/ci/CI_STATE.md`;
-   - rewrite this file for Step 3;
-   - update `docs/ci/DECISIONS.md` only if a durable decision was made.
-10. Commit and push the final handoff only under explicit user authorization.
-11. Stop without implementing Step 3.
+- The project currently contains only the package boundary and one
+  installed-package test; no application or simulator abstractions exist.
+- Python 3.11 and the locked pytest environment are established.
+- Pull Request workflow `CI / Python 3.11` reproduces the mandatory Python
+  checks and has a successful GitHub run.
+- No physical hardware, API, database, Docker, Supabase, secrets, or production
+  service is available or required.
+- Product telemetry fields, rates, retention, buffer limits, and command
+  authority remain open decisions.
 
-## Validation already completed locally
+## Allowed scope
 
-- `python3 -m venv .venv`
-- `.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'`
+- Minimal interfaces or protocols for fake sensor, clock, transport, and
+  temporary durable queue boundaries.
+- Deterministic in-memory or temporary-filesystem test implementations.
+- Explicitly labeled test fixtures and test configuration.
+- Unit tests that prove deterministic control of time, readings, delivery
+  success/failure, queue persistence behavior, and ordering only to the extent
+  needed to validate the boundaries.
+- Dependency and CI handoff updates required by this step.
+
+## Out of scope
+
+- Product telemetry envelope or field definitions; those belong to Step 4.
+- Duplicate, reconnect, replay, late-data, reboot, or stream semantics from
+  Steps 5 and 6.
+- API implementation, HTTP integration, Supabase, PostgreSQL, Docker, or
+  schema work.
+- Production credentials, authorization roles, retention guarantees, buffer
+  limits, sampling/reporting rates, or remote-command behavior.
+- Hardware-in-the-Loop, deployment, coverage thresholds, caching, lint, or
+  type-check additions.
+
+## Required investigation
+
+- Reconfirm repository, Pull Request, and CI state before changes.
+- Inspect the current minimal package and test structure.
+- Choose the smallest boundaries that support later deterministic scenarios
+  without prematurely implementing those scenarios.
+- Keep temporary values explicitly named as test fixtures or test
+  configuration, never as product defaults or requirements.
+
+## Validation
+
+Recreate or reuse the isolated environment and run:
+
 - `.venv/bin/python -m pip check`
 - `.venv/bin/python -m pytest`
-- Installed-package path verification from outside the repository root.
-- YAML parsing and explicit workflow semantics/security assertions.
-- `git diff --check`.
-- Official action tag resolution using `git ls-remote`.
 
-Expected local result: dependency consistency passes and pytest reports
-`1 passed`.
+Also verify deterministic repeatability, installed-package imports, no
+production-service or hardware dependency, and `git diff --check`. After
+approved commit and push, verify the updated Pull Request workflow.
+
+Expected result: boundary tests pass repeatedly with no wall-clock timing,
+network, hardware, Docker, Supabase, secret, or production dependency.
 
 ## Stop condition
 
-Stop after the GitHub Actions check is green, Step 2 is recorded as DONE, and
-the approved final handoff is pushed. Do not start Step 3.
+After Step 3 implementation, validation, state update, approved commit/push,
+and successful Pull Request workflow verification. Do not start Step 4 in the
+same session.

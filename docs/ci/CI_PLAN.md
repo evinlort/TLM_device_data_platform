@@ -56,8 +56,7 @@ Dependencies: Step 0.
 
 ### Step 2 — Add the Python GitHub Actions foundation
 
-Status: IN_PROGRESS — implementation and local validation complete; approved
-commit/push and an actual Pull Request workflow run remain.
+Status: DONE
 
 Acceptance criteria:
 
