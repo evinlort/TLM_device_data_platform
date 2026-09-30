@@ -83,7 +83,7 @@ Dependencies: Step 1.
 
 ### Step 4 — Add normal telemetry and contract scenarios
 
-Status: READY_FOR_COMMIT
+Status: DONE
 
 Acceptance criteria:
 

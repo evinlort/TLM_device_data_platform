@@ -3,24 +3,28 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Base HEAD before the uncommitted Step 4 work:
-  `959d08eef602d4ceaaad53e601f622262d5b9764`.
+- Step 4 implementation commit:
+  `d0edec4c7edee583a5137015ad8fd4d5b1f9a19f`.
+- The commit containing this file finalizes the Step 4 handoff; use
+  `git rev-parse HEAD` for its exact SHA without creating a self-referential
+  state update.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: private `evinlort/TLM_device_data_platform` with `main`
   as the default branch.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open from `ci/github-actions-foundation` to `main` and is mergeable.
-- The current remote HEAD check `CI / Python 3.11` is successful.
-- Working tree: contains the completed, locally validated, uncommitted Step 4
-  implementation and handoff updates pending explicit commit approval.
+- GitHub Actions run
+  [CI #7](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36705219771)
+  completed successfully for the Step 4 implementation commit.
+- Working tree: expected to be clean after the approved final Step 4 handoff
+  commit.
 
 ## Current milestone
 
 - Step: Step 4 — Add normal telemetry and contract scenarios.
-- Status: READY_FOR_COMMIT.
-- Remaining completion gates: explicit commit/push approval and a successful
-  Pull Request workflow for the pushed Step 4 HEAD.
+- Status: DONE.
+- Completion blockers: none.
 
 ## Verified facts
 
@@ -80,7 +84,14 @@ dependency. The same locked command succeeded after network access was
 explicitly approved; the full suite then passed. These were installed-package
 and environment-access conditions, not source defects.
 
-Remote validation for the pushed Step 4 HEAD is pending commit approval.
+Remote validation:
+
+- Workflow: `CI`, run ID `36705219771`, run number `7`.
+- Commit: `d0edec4c7edee583a5137015ad8fd4d5b1f9a19f`.
+- Job: `Python 3.11`.
+- Conclusion: SUCCESS.
+- Checkout, Python setup, locked installation, dependency consistency, and
+  pytest all completed successfully.
 
 ## Current CI
 
@@ -122,8 +133,7 @@ See `docs/ci/CI_PLAN.md` for the fuller list and affected future milestones.
 ## Next step
 
 - Step: Step 4.5 — Publish test result artifacts.
-- Activation requires Step 4 to be committed, pushed, and successful in the
-  Pull Request workflow.
+- Step 4 is committed, pushed, and successful in the Pull Request workflow.
 - Step 4.5 must preserve the pytest exit status while producing and uploading
   machine-readable and human-readable test results.
 

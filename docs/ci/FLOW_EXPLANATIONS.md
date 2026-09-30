@@ -1097,7 +1097,20 @@ Step 4 не добавлял:
 - новые dependencies, caching, lint, type checking или coverage threshold;
 - Hardware-in-the-Loop, deployment, branch protection или merge PR.
 
-После локальной валидации Step 4 имеет статус `READY_FOR_COMMIT`. Для
-завершения всё ещё нужны явное разрешение пользователя на commit/push и
-успешный `CI / Python 3.11` для отправленного HEAD. Step 4.5 нельзя начинать в
-этой сессии.
+### Удалённая проверка и завершение шага
+
+После явного разрешения пользователя реализация и подготовленный handoff были
+зафиксированы commit `d0edec4` (`test: add telemetry fixture contract
+scenarios`) и отправлены в `ci/github-actions-foundation`.
+
+Push запустил GitHub Actions workflow `CI`, run ID `36705219771`, run number
+`7`. Job `Python 3.11` завершился с conclusion `success`. На чистом
+GitHub-hosted runner успешно прошли checkout, Python setup, locked
+installation, `pip check` и полный pytest suite. Тем самым test-only contract,
+ordered scenario и controlled rejection проверены не только в локальном
+`.venv`, но и в изолированной Pull Request среде без hardware, secrets и
+production services.
+
+После успешного run `CI_PLAN.md` и `CI_STATE.md` переведены из
+`READY_FOR_COMMIT` в `DONE`. Следующим шагом остаётся Step 4.5; никакая его
+реализация в этой сессии не выполнялась.
