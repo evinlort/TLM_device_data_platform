@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 
@@ -46,6 +47,81 @@ class TelemetryFixtureEnvelope:
     sequence_no: int
     recorded_at: str
     payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ObservedTelemetryFixture:
+    """One test observation kept separately from device-recorded fixture time."""
+
+    observation_no: int
+    observed_at: datetime
+    envelope: TelemetryFixtureEnvelope
+
+
+class TelemetryFixtureProjection:
+    """Keep test history and project state for one explicitly active fixture stream.
+
+    Stream activation is controlled by the test harness. Device-provided
+    ``recorded_at`` values never activate a stream or decide which observation
+    becomes current. This class is deterministic fixture orchestration, not a
+    production persistence, ordering, reboot, trust, or authorization policy.
+    """
+
+    def __init__(self, test_active_stream_id: str) -> None:
+        self._active_stream_id = test_active_stream_id
+        self._history: list[ObservedTelemetryFixture] = []
+        self._current_state: TelemetryFixtureEnvelope | None = None
+
+    @property
+    def history(self) -> tuple[ObservedTelemetryFixture, ...]:
+        """Return every fixture observation in deterministic arrival order."""
+        return tuple(self._history)
+
+    @property
+    def current_state(self) -> TelemetryFixtureEnvelope | None:
+        """Return the highest-sequence observation in the active test stream."""
+        return self._current_state
+
+    @property
+    def active_stream_id(self) -> str:
+        """Return the stream explicitly selected by the test harness."""
+        return self._active_stream_id
+
+    def activate_test_stream(self, test_stream_id: str) -> None:
+        """Select a fixture stream and permit its sequence to restart.
+
+        Calling this method represents an explicit test event. It must not be
+        inferred from an untrusted fixture timestamp or treated as device
+        authorization.
+        """
+        self._active_stream_id = test_stream_id
+        self._current_state = None
+
+    def observe(
+        self,
+        message: bytes,
+        *,
+        observed_at: datetime,
+    ) -> ObservedTelemetryFixture:
+        """Record one fixture arrival and update only its active stream state."""
+        envelope = parse_fixture_telemetry(message)
+        observation = ObservedTelemetryFixture(
+            observation_no=len(self._history) + 1,
+            observed_at=observed_at,
+            envelope=envelope,
+        )
+        self._history.append(observation)
+
+        if envelope.stream_id != self._active_stream_id:
+            return observation
+
+        if (
+            self._current_state is None
+            or envelope.sequence_no > self._current_state.sequence_no
+        ):
+            self._current_state = envelope
+
+        return observation
 
 
 def serialize_fixture_telemetry(envelope: TelemetryFixtureEnvelope) -> bytes:

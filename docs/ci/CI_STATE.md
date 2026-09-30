@@ -3,75 +3,76 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Step 5 implementation commit:
-  `f89366151dc7b913feb6d77bef776b960a575a88`.
-- The commit containing this file finalizes the Step 5 handoff; use
-  `git rev-parse HEAD` for its exact SHA without creating a self-referential
-  state update.
+- Verified starting HEAD for Step 6:
+  `4fc720d2db00c5f852e800b06b2d4a8615be0f97`.
+- Remote branch `origin/ci/github-actions-foundation` resolved to the same SHA
+  before Step 6 changes.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: public `evinlort/TLM_device_data_platform` with `main` as
-  the default branch. The repository changed from the previously recorded
-  private visibility; the user confirmed on 2026-09-30 that public visibility
+  the default branch. The user confirmed on 2026-09-30 that public visibility
   is intentional.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open from `ci/github-actions-foundation` to `main`.
 - GitHub Actions
-  [CI #11](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36721698288)
-  completed successfully for the Step 5 implementation commit. Its
-  `Python 3.11` job completed locked installation, dependency checking,
-  pytest, result-file validation, and artifact upload successfully.
-- Step 5 artifact `pytest-results-python-3.11`, ID `11098952143`, was
-  downloaded and inspected. Its GitHub digest and the downloaded ZIP SHA-256
-  both equal
-  `f5eb6b10322b29f799f64eb94cf6eb64cc759f7cae3684533b56325e671f738c`.
-- Working tree: expected to be clean after the approved final Step 5 handoff
-  commit.
+  [CI #12](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36723266684)
+  completed successfully for the verified starting HEAD. Its `Python 3.11`
+  job completed locked installation, dependency checking, pytest, result-file
+  validation, and artifact upload successfully.
+- Prerequisite artifact `pytest-results-python-3.11`, ID `11101041556`, was
+  downloaded and inspected before Step 6. Its GitHub digest and downloaded
+  ZIP SHA-256 both equal
+  `ab5529354c9de7eca236a3d091a351610219994a178c6f739f1814bcf5c08231`.
+- Working tree: contains the reviewed and locally validated Step 6 changes;
+  they are not committed or pushed pending explicit user approval.
 
 ## Current milestone
 
-- Step: Step 5 — Add duplicate, offline, and reconnect scenarios.
-- Status: DONE.
-- Completion blockers: none.
+- Step: Step 6 — Add ordering, stream, and late-data scenarios.
+- Status: READY_FOR_COMMIT.
+- Completion blockers: explicit commit/push approval, then successful Pull
+  Request workflow verification and inspection of the Step 6 artifact.
 
 ## Verified facts
 
-- `Transport` and `DurableQueue` continue to carry opaque serialized `bytes`.
-- `flush_test_queue()` is explicitly test-only deterministic orchestration.
-  One call attempts FIFO messages until the queue is empty or the configured
-  transport returns `False`.
-- A configured `True` removes only the matching queue head in the test flow.
-  A configured `False` stops the explicit flush and leaves that message and
-  all later messages queued.
-- Reconnect is modeled by constructing a new `ScriptedTransport` and calling
-  `flush_test_queue()` again; there is no automatic retry loop, timer,
-  backoff, wait, or reconnect implementation.
-- Logical duplicate acceptance is defined only inside the Step 5 fixture
-  scenario as keeping the first parsed envelope for each fixture
-  `message_id`. It is not a production storage or acknowledgement contract.
-- The buffered burst contains `64` fixture messages only to exercise ordered
-  correctness over more than a trivial sequence. It is not a capacity,
-  performance, scale, overflow, retention, or SLO claim.
+- `TelemetryFixtureProjection` is explicitly deterministic test-only
+  orchestration, not a production persistence or conflict-resolution model.
+- Every parsed fixture observation is retained in immutable-view history with
+  a deterministic `observation_no` and separately supplied `observed_at`.
+- `recorded_at` remains untrusted fixture data and never activates a stream or
+  decides `current_state`.
+- Sequence comparison applies only to the stream explicitly activated by the
+  test harness. A higher sequence in an inactive stream stays in history and
+  cannot replace the active stream's current state.
+- Explicit `activate_test_stream()` resets only the fixture current-state
+  projection, so the newly selected stream may begin at sequence `1` while
+  prior observations remain in history.
+- Existing `Transport` and `DurableQueue` boundaries still carry opaque
+  serialized `bytes`; no fixture parsing was added to those boundaries.
 - No runtime or test dependency was added, and `.github/workflows/ci.yml` did
   not require a change.
 - No physical hardware, wall-clock wait, random input, network service,
   credential, API, database, Supabase, PostgreSQL, or Docker dependency is
   used by the new scenarios.
 - `docs/ci/FLOW_EXPLANATIONS.md` contains detailed Russian explanations for
-  Steps 1 through 5.
+  Steps 1 through 6.
 
-## Implemented in Step 5
+## Implemented in Step 6
 
-- `flush_test_queue()` in `simulation.py` composes the existing queue and
-  transport protocols without interpreting message contents.
-- A duplicate fixture retry scenario proves two delivery attempts with the
-  same fixture `message_id` produce one logical fixture acceptance.
-- An unavailable-transport scenario proves the failed queue head and the next
-  message remain in the temporary durable test queue across instances.
-- A reconnect scenario proves persisted messages replay in FIFO sequence
-  order `1, 2, 3` and leave the queue empty after configured success.
-- A `64`-message correctness burst proves exact byte-for-byte FIFO replay and
-  sequence order after an explicit offline/reconnect transition.
+- `ObservedTelemetryFixture` records fixture arrival order, controlled
+  observation time, and the parsed envelope without conflating observation
+  time with device-provided `recorded_at`.
+- `TelemetryFixtureProjection` keeps complete test history and updates
+  `current_state` only for a higher sequence in the explicitly active test
+  stream.
+- An out-of-order scenario ingests fixture sequence `1, 3, 2`, retains that
+  exact history, and proves current state remains sequence `3`.
+- A reboot scenario explicitly switches fixture streams and proves the new
+  stream can restart at sequence `1` without deleting earlier history.
+- A late-data scenario proves a later observation from the inactive pre-reboot
+  stream remains in history and cannot replace the post-reboot current state.
+- A controlled clock-skew scenario proves past and far-future `recorded_at`
+  values neither choose current state nor activate another fixture stream.
 
 ## Validation
 
@@ -81,37 +82,31 @@ Local environment:
 - Locked project reinstall: PASS.
 - `.venv/bin/python -m pip check`: PASS
   (`No broken requirements found`).
-- Workflow-equivalent full pytest command: PASS (`16 passed`), returning
+- Workflow-equivalent full pytest command: PASS (`20 passed`), returning
   status `0` and creating both non-empty result files.
-- JUnit XML parse: PASS (`16` tests, `0` failures, `0` errors, `0` skipped).
-- Step 5 scenario suite repeated five times: PASS (`4 passed` each time).
-- Installed-package import from `/tmp`: PASS; `flush_test_queue` resolves from
+- JUnit XML parse: PASS (`20` tests, `0` failures, `0` errors, `0` skipped).
+- Step 6 scenario suite repeated five times: PASS (`4 passed` each time).
+- Installed-package import from `/tmp`: PASS;
+  `TelemetryFixtureProjection` resolves from
   `.venv/lib/python3.11/site-packages`, not the source tree.
-- Forbidden hardware/production dependency scan: PASS.
+- Forbidden hardware/production dependency and uncontrolled-time scan: PASS.
 - Existing artifact contract: PASS; the workflow still creates and uploads
   both `test-results/pytest.xml` and `test-results/pytest.log` with always-run
   validation and upload behavior.
 - `git diff --check`: PASS.
 
-The first locked reinstall attempt ran in the restricted sandbox and could not
-resolve the pinned PEP 517 build dependency. The identical command succeeded
-after explicit network approval; dependency versions and the installation
-contract were not changed.
+The first targeted Step 6 test run used the previously installed Step 5 wheel
+and failed collection because the new projection class was intentionally not
+importable from the source tree. Reinstalling the current project with the
+locked command rebuilt the wheel; the targeted and full suites then passed.
+No import-path workaround or dependency change was made.
 
-Remote Step 5 validation:
+Remote Step 6 validation:
 
-- Workflow: `CI`, run ID `36721698288`, run number `11`.
-- Commit: `f89366151dc7b913feb6d77bef776b960a575a88`.
-- Job: `Python 3.11`; every job step completed with conclusion `success`.
-- Artifact: `pytest-results-python-3.11`, ID `11098952143`, `1254` archive
-  bytes, not expired when inspected.
-- GitHub-reported and downloaded ZIP SHA-256 both equal
-  `f5eb6b10322b29f799f64eb94cf6eb64cc759f7cae3684533b56325e671f738c`.
-- The downloaded ZIP passed archive integrity validation and contained exactly
-  the expected non-empty `pytest.xml` (`2642` bytes) and `pytest.log` (`801`
-  bytes).
-- Downloaded JUnit XML: `16` tests, `0` failures, `0` errors, `0` skipped.
-- Downloaded pytest log: PASS; it contains the `16 passed` summary.
+- PENDING until the user approves commit and push.
+- The Step 6 Pull Request run must complete successfully and its published
+  `pytest-results-python-3.11` artifact must be downloaded and inspected before
+  Step 6 can be marked DONE.
 
 ## Current CI
 
@@ -126,8 +121,9 @@ Remote Step 5 validation:
   - `test-results/pytest.log` — human-readable pytest output;
   - artifact name: `pytest-results-python-3.11`.
 - Current suite: one installed-package boundary test, four deterministic
-  simulator-boundary tests, seven telemetry-fixture contract cases, and four
-  Step 5 delivery scenarios; `16` tests total.
+  simulator-boundary tests, seven telemetry-fixture contract cases, four
+  Step 5 delivery scenarios, and four Step 6 ordering scenarios; `20` tests
+  total.
 
 ## Current database state
 
@@ -138,6 +134,8 @@ Remote Step 5 validation:
 
 - Product telemetry envelope, field names, schema versions, field semantics,
   and rates per `system_type`.
+- Production history, current-state, stream identity, reboot, ordering,
+  late-data, timestamp trust, and conflict-resolution policy.
 - Credential implementation and provisioning details.
 - Group/session role and authorization semantics.
 - RLS versus Application API authorization split.
@@ -148,10 +146,10 @@ Remote Step 5 validation:
 
 See `docs/ci/CI_PLAN.md` for the fuller list and affected future milestones.
 
-## Files changed in Step 5
+## Files changed in Step 6
 
-- `src/tlm_device_data_platform/simulation.py`
-- `tests/test_delivery_scenarios.py`
+- `src/tlm_device_data_platform/telemetry_fixture.py`
+- `tests/test_ordering_scenarios.py`
 - `docs/ci/CI_PLAN.md`
 - `docs/ci/CI_STATE.md`
 - `docs/ci/NEXT_SESSION.md`
@@ -163,10 +161,11 @@ not require changes.
 
 ## Next step
 
-- Step: Step 6 — Add ordering, stream, and late-data scenarios.
-- Step 5 is committed, pushed, successful in the Pull Request workflow, and
-  its published artifact has been downloaded and inspected.
-- Step 6 must start in a new Codex session.
+- Step: Step 7 — Establish the local API/storage integration boundary.
+- Step 7 is not activated while Step 6 is `READY_FOR_COMMIT`.
+- After approved commit/push, successful Pull Request CI, artifact download
+  and inspection, and a final Step 6 handoff update, Step 7 must start in a
+  new Codex session.
 
-Use `docs/ci/BOOTSTRAP_PROMPT.md` for that new session. Do not start Step 6 in
+Use `docs/ci/BOOTSTRAP_PROMPT.md` for that new session. Do not start Step 7 in
 this session.

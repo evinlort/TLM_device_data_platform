@@ -293,3 +293,48 @@ Source:
 
 Step 5 deterministic delivery-scenario implementation and the existing
 `CI-DEC-001`, `CI-DEC-002`, `CI-DEC-007`, and `CI-DEC-008` constraints.
+
+## CI-DEC-010 — Explicit test stream activation and observation ordering
+
+Status: ACCEPTED
+
+Decision:
+
+Use `TelemetryFixtureProjection` only as deterministic test orchestration. It
+retains every parsed fixture envelope in observation order with a separately
+controlled `observed_at`, while its current-state view compares `sequence_no`
+only inside the stream explicitly activated by the test harness. A test stream
+change is an explicit harness event that resets the fixture current-state view
+without deleting history. Device-provided `recorded_at` never activates a
+stream and never selects current state.
+
+Reason:
+
+Step 6 must prove out-of-order, reboot/new-stream, late-data, and clock-skew
+scenarios while Product Management has not confirmed production history,
+current-state, stream identity, reboot, ordering, timestamp trust, or conflict
+resolution. Explicit activation and separate observation metadata make the
+scenarios deterministic without granting authority to device timestamps or
+silently defining production policy.
+
+Consequences:
+
+- `ObservedTelemetryFixture` and `TelemetryFixtureProjection` remain fixture
+  helpers, not a production repository, Storage Adapter, or API contract.
+- A lower sequence in the active fixture stream and any sequence in an
+  inactive fixture stream remain in history but cannot replace fixture current
+  state.
+- A newly activated fixture stream may start at sequence `1`; this proves only
+  the Step 6 scenario and does not define how production detects or authorizes
+  reboot or stream changes.
+- `recorded_at` is preserved as untrusted fixture data. Controlled
+  `observed_at` and `observation_no` describe test arrival without establishing
+  a production trusted-clock design.
+- Existing transport and queue boundaries remain opaque `bytes` and do not
+  parse or interpret fixture telemetry.
+
+Source:
+
+Step 6 deterministic ordering-scenario implementation and the existing
+`CI-DEC-001`, `CI-DEC-002`, `CI-DEC-007`, `CI-DEC-008`, and `CI-DEC-009`
+constraints.

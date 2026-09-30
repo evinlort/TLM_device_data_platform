@@ -1838,3 +1838,317 @@ inspection `CI_PLAN.md` и `CI_STATE.md` переведены в `DONE`.
 
 Следующим остаётся Step 6. Его реализация в этой сессии не начиналась и должна
 стартовать только в новой сессии через `docs/ci/BOOTSTRAP_PROMPT.md`.
+
+---
+
+## Step 6 — Ordering, stream и late-data сценарии
+
+### Короткий итог
+
+Step 6 добавил минимальную test-only модель истории и текущего состояния для
+telemetry fixtures. Каждое поступление теперь можно записать в историю вместе с
+контролируемыми тестом `observation_no` и `observed_at`. Текущее состояние
+обновляется только сообщением с большим `sequence_no` внутри stream, который
+явно выбран test harness. Поэтому out-of-order сообщение сохраняется, но не
+откатывает более новое состояние; новый fixture `stream_id` может явно начать
+последовательность заново; позднее сообщение старого stream остаётся в истории,
+но не вытесняет состояние нового stream.
+
+Поле `recorded_at` намеренно не интерпретируется как доказательство порядка,
+доверия или полномочий. Clock-skew сценарий использует далёкие прошлые и
+будущие значения device time и подтверждает, что они не выбирают
+`current_state` и не активируют stream.
+
+Вся модель остаётся частью явно обозначенного fixture contract. Она не является
+production хранилищем, Storage Adapter, reboot protocol, authorization policy
+или окончательным алгоритмом разрешения конфликтов.
+
+### Почему этот шаг был нужен
+
+После Step 5 CI уже умел детерминированно проверять duplicate, offline queue и
+reconnect replay. Однако FIFO replay отвечает только на вопрос, в каком порядке
+клиент попытался повторно передать bytes. Он не доказывает, как принимающая
+сторона должна вести историю и текущую проекцию, если сообщения фактически
+наблюдаются не по `sequence_no`, если устройство начинает новую сессию после
+условной перезагрузки или если старое сообщение приходит после более нового.
+
+Отдельным риском было поле `recorded_at`. Оно находится внутри test envelope и
+имитирует время, сообщённое устройством. Если использовать его для выбора
+текущего состояния или автоматического принятия нового stream, тест незаметно
+закрепил бы недоказанное предположение: часы устройства точны и заслуживают
+доверия. В реальной системе clock может отставать, спешить, быть сброшен или
+контролироваться недоверенным источником. Product Management пока не определил
+ни trusted clock, ни reboot identity, ни authorization semantics.
+
+Поэтому Step 6 должен был разделить три понятия:
+
+1. содержимое fixture envelope, включая недоверенное `recorded_at`;
+2. факт и порядок наблюдения сообщения тестовой системой;
+3. явно выбранный test stream, внутри которого допустимо сравнивать
+   `sequence_no`.
+
+Такое разделение позволяет проверить требуемые свойства и не выдавать
+временную test configuration за production requirement.
+
+### Проверка состояния перед изменениями
+
+До редактирования были сверены branch, `HEAD`, remote, clean working tree,
+Pull Request и GitHub Actions. Ветка
+`ci/github-actions-foundation` и remote branch указывали на
+`4fc720d2db00c5f852e800b06b2d4a8615be0f97`. Pull Request #1 оставался открыт
+на `main`.
+
+Handoff фиксировал successful Step 5 implementation run #11. Кроме него на
+текущем documentation `HEAD` уже существовал более новый successful CI run
+#12, ID `36723266684`. Все steps job `Python 3.11`, включая locked install,
+`pip check`, pytest, result validation и artifact upload, завершились с
+`success`.
+
+Artifact актуального `HEAD`, `pytest-results-python-3.11` с ID `11101041556`,
+был скачан и проверен отдельно. Его SHA-256
+`ab5529354c9de7eca236a3d091a351610219994a178c6f739f1814bcf5c08231`
+совпал с GitHub digest. ZIP прошёл `unzip -t` и содержал ровно непустые
+`pytest.xml` и `pytest.log`; log завершался результатом `16 passed`.
+Следовательно, activation condition Step 6 была выполнена для фактического
+PR head, а не только для implementation commit предыдущего шага.
+
+### Минимальная fixture projection
+
+В `src/tlm_device_data_platform/telemetry_fixture.py` добавлены два test-only
+типа.
+
+`ObservedTelemetryFixture` — immutable dataclass с тремя полями:
+
+- `observation_no` — последовательный номер поступления внутри одного fixture
+  projection;
+- `observed_at` — время наблюдения, которое тест передаёт явно;
+- `envelope` — уже проверенный `TelemetryFixtureEnvelope`.
+
+`TelemetryFixtureProjection` хранит список таких наблюдений, идентификатор
+явно активного stream и необязательный `current_state`. Его контракт намеренно
+узкий:
+
+```text
+observe opaque serialized fixture bytes at controlled observed_at
+  -> parse with the existing fixture parser
+  -> append every valid observation to history
+  -> if stream is inactive: stop without changing current_state
+  -> if active stream has no current state: select the observation
+  -> if sequence_no is greater: replace current_state
+  -> otherwise: keep the observation only in history
+```
+
+История наружу возвращается как tuple. Это не делает backing store durable, но
+не позволяет вызывающему коду случайно изменить внутренний list через
+property. Номер наблюдения вычисляется из детерминированного порядка вызовов и
+не зависит от wall clock.
+
+Метод `activate_test_stream()` представляет явное событие test harness. Он
+выбирает новый fixture stream и очищает только текущую проекцию. Накопленная
+история сохраняется. После этого первое сообщение нового stream может иметь
+`sequence_no = 1`, даже если предыдущий stream дошёл до значительно большего
+номера.
+
+Важно, что `activate_test_stream()` не вызывается автоматически по значению
+`stream_id`, `recorded_at` или любому полю входящего сообщения. Таким образом,
+само сообщение не получает право объявить себя новым доверенным stream. В
+production вопрос о том, кто и как подтверждает reboot или смену stream,
+остаётся открытым.
+
+### Почему модель размещена в `telemetry_fixture.py`
+
+Существующие `Transport` и `DurableQueue` в `simulation.py` продолжают работать
+с opaque `bytes`. Добавление parsing или sequence logic туда связало бы
+provider-independent delivery boundary с временной JSON fixture schema.
+
+Projection размещена рядом с уже явно test-only envelope и использует
+существующий `parse_fixture_telemetry()`. Поэтому interpretation начинается
+только после generic delivery boundary. `Transport.send()`,
+`TemporaryFileQueue` и `flush_test_queue()` не изменены и по-прежнему ничего не
+знают о `message_id`, `stream_id`, `sequence_no` или timestamps.
+
+### Добавленные deterministic scenarios
+
+Новый файл `tests/test_ordering_scenarios.py` содержит четыре сценария. Все
+значения с префиксом `TEST_` и строки `test-step-6-*` являются test fixtures,
+а не product defaults.
+
+#### Out-of-order history
+
+`test_out_of_order_history_does_not_roll_back_fixture_current_state`
+наблюдает в одном активном stream последовательность `1, 3, 2`.
+
+Проверяется, что history сохраняет именно arrival order `(1, 3, 2)` и получает
+`observation_no` `(1, 2, 3)`. После sequence `3` позднее наблюдение sequence `2`
+не откатывает `current_state`: текущим остаётся envelope с sequence `3`.
+
+#### Новый stream после test reboot
+
+`test_new_fixture_stream_permits_sequence_restart_after_test_reboot` сначала
+наблюдает sequence `41` в stream до reboot. Затем test harness явно вызывает
+`activate_test_stream()` для другого fixture `stream_id` и наблюдает sequence
+`1`.
+
+История содержит оба envelope, но current state относится к новому stream и
+имеет sequence `1`. Это доказывает scoped comparison: число `1` не сравнивается
+глобально с `41` из другой fixture sequence.
+
+#### Late data старого stream
+
+`test_late_fixture_telemetry_stays_in_history_without_replacing_new_stream`
+после явной активации post-reboot stream принимает ещё один envelope старого
+stream с sequence `42`.
+
+Поздний envelope добавляется третьей записью истории. Несмотря на большое
+значение `42`, он относится к inactive stream и не заменяет post-reboot
+`current_state` с sequence `1`. Шаг тем самым не смешивает независимые
+sequence spaces.
+
+#### Контролируемый clock skew
+
+`test_device_clock_skew_cannot_choose_or_authorize_fixture_current_state`
+использует `ManualClock` для observation time и намеренно противоречивые
+device timestamps:
+
+- sequence `1` сообщает `recorded_at` в конце 2099 года;
+- sequence `2` сообщает `recorded_at` в начале 2001 года;
+- inactive stream сообщает sequence `999` и `recorded_at` в 2999 году.
+
+`observed_at` при этом возрастает ровно на одну test second между вызовами.
+История сохраняет и controlled observation times, и исходные device timestamps.
+Current state становится sequence `2`, потому что сравнение происходит внутри
+активного stream по fixture sequence, а far-future сообщение inactive stream
+не активирует себя. Это не утверждает, что production обязан доверять
+`sequence_no`; тест лишь доказывает, что текущая fixture orchestration не
+использует device clock как authority.
+
+### Полный поток Step 6
+
+```text
+test constructs a fixture envelope
+  -> existing serializer validates and creates deterministic UTF-8 bytes
+  -> ManualClock supplies controlled observation time
+  -> TelemetryFixtureProjection parses the fixture bytes
+  -> observation is always appended to test history
+  -> explicit active stream gates current-state consideration
+  -> greater sequence within that stream advances fixture current_state
+  -> lower sequence or inactive-stream data remains history-only
+```
+
+Test reboot flow:
+
+```text
+old stream has fixture current_state
+  -> test harness explicitly activates a new stream
+  -> fixture current_state resets, history remains
+  -> sequence 1 in the new stream becomes current
+  -> later old-stream observations remain history-only
+```
+
+Ни в одном потоке нет background task, sleep, настоящего времени, случайного
+input, физического устройства, API, HTTP, database, Supabase, PostgreSQL,
+Docker, secret или credential.
+
+### Что происходило во время реализации и как решались проблемы
+
+#### Первый test run не увидел новый класс
+
+Сразу после изменения source targeted pytest завершился collection error:
+`TelemetryFixtureProjection` отсутствовал в импортированном module. Traceback
+показал путь `.venv/lib/python3.11/site-packages/...`, то есть тест корректно
+использовал ранее установленный Step 5 wheel, а не подменял package исходниками
+из repository root.
+
+Проблема была устранена канонической locked-командой:
+
+```bash
+.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'
+```
+
+Wheel был пересобран и переустановлен. После этого targeted suite прошёл. Не
+добавлялись `PYTHONPATH`, editable install или иные обходы, которые ослабили бы
+installed-package boundary.
+
+#### Нужно было не превратить fixture projection в production policy
+
+Автоматический выбор нового stream по первому неизвестному `stream_id` был бы
+удобен, но дал бы входящему сообщению неявную власть сменить current state.
+Сравнение timestamps также закрепило бы недоказанную модель доверенных device
+часов. Вместо этого смена stream стала явным действием test harness, а
+`recorded_at` сохраняется без влияния на projection.
+
+Docstrings прямо перечисляют ограничения: класс не определяет production
+persistence, ordering, reboot, trust или authorization. Durable решение
+`CI-DEC-010` фиксирует этот scope между сессиями.
+
+#### Existing delivery и artifact flows не потребовали изменений
+
+Step 6 добавил parsing только в fixture layer. Generic queue/transport code и
+workflow остались корректными. Новые tests автоматически попали в прежнюю
+`python -m pytest` command и существующие JUnit/log artifacts, поэтому
+`.github/workflows/ci.yml`, `pyproject.toml` и `requirements/test.txt` менять не
+потребовалось.
+
+### Проверка и что она доказывает
+
+Локально на Python 3.11.9 выполнены locked reinstall, `pip check` и полный
+workflow-equivalent pytest с JUnit XML и readable log.
+
+Результаты:
+
+- locked wheel build и reinstall: PASS;
+- dependency consistency: PASS (`No broken requirements found`);
+- полный suite: PASS (`20 passed`);
+- pytest exit status: `0`;
+- JUnit XML: `20` tests, `0` failures, `0` errors, `0` skipped;
+- `pytest.xml`: `3213` bytes, непустой;
+- `pytest.log`: `822` bytes, непустой;
+- Step 6 suite пять раз подряд: PASS (`4 passed` каждый раз);
+- installed-package import из `/tmp`: PASS;
+- forbidden hardware/production dependency и uncontrolled-time scan: PASS;
+- workflow по-прежнему создаёт, проверяет и загружает оба result files с
+  `always()` и `if-no-files-found: error`;
+- `git diff --check`: PASS.
+
+Повторные прогоны проверяют отсутствие случайной зависимости от wall clock,
+test order или общего mutable state. Они не являются performance или
+statistical test. Импорт из `/tmp` подтвердил, что
+`TelemetryFixtureProjection` загружается из установленного wheel в
+`.venv/lib/python3.11/site-packages`.
+
+Полный suite показывает, что новая projection не сломала package boundary,
+симулятор, fixture parser или Step 5 delivery scenarios. XML/log проверка
+показывает, что artifact contract без изменений охватывает уже `20` tests.
+
+### Что сознательно осталось вне Step 6
+
+Step 6 не определял и не реализовывал:
+
+- production history store или current-state materialization;
+- database transaction, unique constraint или conflict resolution;
+- production смысл `stream_id`, способ обнаружения reboot или право сменить
+  active stream;
+- доверенный server time, синхронизацию часов или timestamp validation;
+- production ordering, late-data window, retention или reconciliation policy;
+- API, HTTP, Storage Adapter, Supabase, PostgreSQL, schema или Docker;
+- credentials, identity, roles, RLS, authorization или remote commands;
+- retry, acknowledgement, buffer capacity, overflow или data-loss guarantees;
+- performance, throughput, fleet scale или SLO;
+- новые dependencies, caching, lint, type checking или coverage threshold;
+- deployment, branch protection, Pull Request merge или Hardware-in-the-Loop;
+- Step 7 API/storage integration implementation.
+
+Все перечисленные product semantics остаются открытыми. Имена полей и
+алгоритм projection используются только для детерминированного Step 6 fixture.
+
+### Состояние перед commit approval
+
+Implementation, tests, validation и handoff подготовлены локально.
+`CI_PLAN.md` и `CI_STATE.md` имеют статус `READY_FOR_COMMIT`.
+`NEXT_SESSION.md` описывает Step 7, но запрещает начинать его до approved
+commit/push Step 6, successful Pull Request workflow и inspection нового
+artifact.
+
+Удалённая проверка Step 6 пока намеренно не заявлена: она возможна только после
+явного разрешения пользователя на commit и push. До этого Step 6 не получает
+статус `DONE`.
