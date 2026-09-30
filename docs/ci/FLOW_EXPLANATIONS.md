@@ -837,3 +837,20 @@ installed-package boundary, который был установлен на Step
 Следующий Step 4 может использовать opaque transport/queue boundary и добавить
 явно test-only contract fixtures. Начинать его в этой сессии нельзя. Сначала
 Step 3 должен получить одобренный commit/push и успешный Pull Request workflow.
+
+### Удалённая проверка и завершение шага
+
+После явного разрешения пользователя реализация и подготовленный handoff были
+зафиксированы commit `ef46e3d` (`test: add deterministic simulator boundaries`)
+и отправлены в `ci/github-actions-foundation`.
+
+Push запустил GitHub Actions workflow `CI`, run ID `36699527689`, run number
+`4`. Job `Python 3.11` завершился с conclusion `success`. На чистом
+GitHub-hosted runner успешно прошли checkout, Python setup, locked installation,
+`pip check` и полный pytest suite. Это подтверждает, что Step 3 работает не
+только в сохранённом локальном `.venv`, но и в изолированной среде Pull Request
+без hardware, secrets и production services.
+
+После этого `CI_PLAN.md` и `CI_STATE.md` переведены из промежуточного
+`READY_FOR_COMMIT` в окончательный `DONE`. Step 4 остаётся задачей новой сессии;
+никакой его implementation в рамках Step 3 не выполнялся.

@@ -70,7 +70,7 @@ Dependencies: Step 1.
 
 ### Step 3 — Define deterministic simulator boundaries
 
-Status: READY_FOR_COMMIT
+Status: DONE
 
 Acceptance criteria:
 
