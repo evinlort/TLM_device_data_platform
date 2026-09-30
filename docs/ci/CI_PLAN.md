@@ -94,6 +94,24 @@ Acceptance criteria:
 
 Dependencies: Step 3.
 
+### Step 4.5 — Publish test result artifacts
+
+Status: NOT_STARTED
+
+Acceptance criteria:
+
+- Produce a machine-readable JUnit XML report and a human-readable pytest log
+  without masking the pytest exit status.
+- Upload both files after the test step with the official
+  `actions/upload-artifact` action pinned to a verified full commit SHA.
+- Attempt the upload even when pytest fails, and fail clearly when the
+  expected result files are absent.
+- Verify that the artifact is available from the completed Pull Request run.
+- Use the repository's default artifact retention and do not turn artifact
+  retention into a product data-retention requirement.
+
+Dependencies: Step 4.
+
 ### Step 5 — Add duplicate, offline, and reconnect scenarios
 
 Status: NOT_STARTED
@@ -105,7 +123,7 @@ Acceptance criteria:
 - Prove deterministic replay after reconnect, including a correctness-scale
   buffered burst.
 
-Dependencies: Step 4.
+Dependencies: Step 4.5.
 
 ### Step 6 — Add ordering, stream, and late-data scenarios
 
@@ -192,7 +210,7 @@ Dependencies: stable completion of earlier CI steps.
 
 `Step 0 -> Step 1 -> Step 2`
 
-`Step 1 -> Step 3 -> Step 4 -> Step 5 -> Step 6 -> Step 7`
+`Step 1 -> Step 3 -> Step 4 -> Step 4.5 -> Step 5 -> Step 6 -> Step 7`
 
 `Step 7 -> Step 8 -> Step 9 -> Step 10 -> Step 11`
 
