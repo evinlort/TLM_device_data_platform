@@ -145,3 +145,36 @@ Source:
 
 Step 1 official Python Packaging User Guide, pytest documentation, and Python
 version-support review.
+
+## CI-DEC-006 — Detailed Russian step explanations
+
+Status: ACCEPTED
+
+Decision:
+
+After every completed and validated CI step, append a standalone,
+Russian-language explanation to `docs/ci/FLOW_EXPLANATIONS.md` before
+requesting approval to commit. Each explanation covers the reason for the
+step, the starting point, the implemented changes, the end-to-end flow, how
+the changes solve the stated goal, implementation events and problem
+resolution, validation and its meaning, and intentionally excluded scope.
+
+Reason:
+
+The compact plan and state files optimize safe cross-session continuation but
+do not provide enough teaching context for a reader to understand the complete
+technical flow and the reasoning behind it.
+
+Consequences:
+
+- `CI_STATE.md` remains the compact source of current verified state.
+- `FLOW_EXPLANATIONS.md` is append-only step history and explanation, not a
+  replacement for the plan, state, next-session handoff, or durable decisions.
+- A step is not ready for commit approval until its explanation has been
+  appended and checked against the implementation and validation evidence.
+- Explanations use Russian prose while preserving English source identifiers,
+  commands, filenames, and configuration keys.
+
+Source:
+
+Direct user instruction after Step 2.

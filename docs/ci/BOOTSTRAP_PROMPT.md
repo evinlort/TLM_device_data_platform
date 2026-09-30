@@ -13,16 +13,18 @@ Before making any changes:
 3. Read `docs/ci/CI_PLAN.md`.
 4. Read `docs/ci/NEXT_SESSION.md`.
 5. Read `docs/ci/DECISIONS.md` only as needed for the current step.
-6. Verify:
+6. Read `docs/ci/FLOW_EXPLANATIONS.md` for the completed-step context and
+   required explanation format.
+7. Verify:
    - `git status`
    - `git branch --show-current`
    - `git rev-parse HEAD`
    - `git remote -v`
-7. Compare the actual Git state with `docs/ci/CI_STATE.md`.
-8. If state differs, stop and investigate before changing files.
-9. Execute ONLY the step defined in `docs/ci/NEXT_SESSION.md`.
-10. Read only additional source or architecture files relevant to that step.
-11. Do not start the following step in this session.
+8. Compare the actual Git state with `docs/ci/CI_STATE.md`.
+9. If state differs, stop and investigate before changing files.
+10. Execute ONLY the step defined in `docs/ci/NEXT_SESSION.md`.
+11. Read only additional source or architecture files relevant to that step.
+12. Do not start the following step in this session.
 
 Communication rules:
 
@@ -40,6 +42,10 @@ Communication rules:
 
 At the end of this session:
 
+- append the completed step's full Russian-language explanation to
+  `docs/ci/FLOW_EXPLANATIONS.md`, including purpose, implementation flow,
+  encountered problems and resolutions, validation meaning, and excluded
+  scope;
 - update `docs/ci/CI_PLAN.md`;
 - update `docs/ci/CI_STATE.md`;
 - rewrite `docs/ci/NEXT_SESSION.md` for the following step;

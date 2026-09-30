@@ -3,7 +3,8 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- HEAD: the commit containing this file completes Step 2; use
+- HEAD: the commit containing this file includes completed Step 2 and the
+  current documentation protocol; use
   `git rev-parse HEAD` to obtain its exact SHA without creating a
   self-referential state update.
 - Remote: `origin` is
@@ -42,6 +43,10 @@
   completed successfully for implementation commit
   `72380506cbae287db8858a55e041fd4186054f1a`.
 - The `Python 3.11` job and every configured step completed successfully.
+- `docs/ci/FLOW_EXPLANATIONS.md` contains the detailed Russian explanation
+  of Steps 1 and 2.
+- Starting with Step 3, every completed step must append its explanation to
+  that file after validation and before commit approval.
 
 ## Implemented
 
@@ -123,6 +128,16 @@ See `docs/ci/CI_PLAN.md` for the fuller list and affected future milestones.
 ## Technical blockers
 
 - None for Step 3.
+
+## Explanation protocol
+
+- `CI_PLAN.md`, `CI_STATE.md`, and `NEXT_SESSION.md` remain compact
+  coordination sources.
+- `FLOW_EXPLANATIONS.md` explains the complete human-readable flow and is
+  appended after every validated step before commit approval.
+- Each new section must cover purpose, starting state, changes, end-to-end
+  mechanics, problem resolution, validation meaning, and intentionally
+  excluded scope.
 
 ## Files changed in the completed step
 

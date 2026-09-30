@@ -17,6 +17,7 @@ Step 3 — Define deterministic simulator boundaries
 3. `docs/ci/CI_PLAN.md`
 4. `docs/ci/NEXT_SESSION.md`
 5. `docs/ci/DECISIONS.md`
+6. `docs/ci/FLOW_EXPLANATIONS.md`
 
 Additional files relevant to this step:
 
