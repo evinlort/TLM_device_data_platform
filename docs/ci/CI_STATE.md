@@ -5,22 +5,25 @@
 - Branch: `ci/github-actions-foundation`.
 - Starting HEAD for Step 8:
   `11a96b308aa26a067cd2aeb995662f06f9c35471`.
+- Step 8 implementation commit:
+  `ef051ddeb7264ddbc392ba80c894d0d8027a46ae`.
+- The commit containing this file finalizes the Step 8 handoff; use
+  `git rev-parse HEAD` for its exact SHA without creating a self-referential
+  state update.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: public `evinlort/TLM_device_data_platform` with `main` as
   the default branch. Public visibility is intentional.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open, mergeable, and points from `ci/github-actions-foundation` to `main`.
-- Working tree: expected to contain only the reviewed Step 8 changes listed
-  below until explicit commit approval.
+- Working tree: expected to be clean after the approved final Step 8 handoff
+  commit.
 
 ## Current milestone
 
 - Step: Step 8 — Define the Supabase schema bootstrap strategy.
-- Status: READY_FOR_COMMIT.
-- Local completion blockers: none.
-- Remote completion blockers: approved commit/push, successful Pull Request
-  workflow, and inspection of the resulting artifact.
+- Status: DONE.
+- Completion blockers: none.
 
 ## Verified starting state
 
@@ -109,6 +112,23 @@
 - Existing workflow still creates, validates, and uploads both pytest result
   files with always-run behavior.
 - `git diff --check` plus untracked-file whitespace validation: PASS.
+
+Remote Step 8 validation:
+
+- Commit: `ef051ddeb7264ddbc392ba80c894d0d8027a46ae`.
+- Workflow: `CI`, run ID `36760536805`, run number `17`, conclusion
+  `success`.
+- Job: `Python 3.11`; checkout, Python setup, locked install, `pip check`,
+  pytest, result validation, artifact upload, and all post steps completed with
+  conclusion `success`.
+- Artifact: `pytest-results-python-3.11`, ID `11118133887`, `1494` archive
+  bytes, not expired when inspected.
+- GitHub digest and downloaded ZIP SHA-256 both equal
+  `44b67a55d353dcb32250aabc9ff15bd59edcf3665ed5b5ae92578d0fb03364ee`.
+- ZIP integrity: PASS; it contains exactly `pytest.xml` (`3481` bytes) and
+  `pytest.log` (`961` bytes), both non-empty.
+- Downloaded JUnit XML: `22` tests, `0` failures, `0` errors, `0` skipped.
+- Downloaded pytest log: PASS; final summary is `22 passed in 0.19s`.
 
 ## Required CI
 

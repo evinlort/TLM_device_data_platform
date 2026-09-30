@@ -2846,3 +2846,42 @@ commit/push Step 8, successful Pull Request workflow, artifact inspection и
 Удалённая проверка Step 8 пока намеренно не заявлена: она возможна только после
 явного разрешения пользователя на commit и push. До этого Step 8 не получает
 статус `DONE`.
+
+### Удалённая проверка и завершение шага
+
+После явного разрешения пользователя стратегия, locked CLI toolchain и
+подготовленный handoff были зафиксированы commit
+`ef051ddeb7264ddbc392ba80c894d0d8027a46ae`
+(`ci: define Supabase schema bootstrap strategy`) и отправлены в
+`ci/github-actions-foundation`.
+
+Push запустил Pull Request workflow `CI`, run ID `36760536805`, run number
+`17`. Job `Python 3.11` завершился с conclusion `success`. Отдельная проверка
+job details подтвердила согласованные `completed/success` для checkout, Python
+setup, locked installation, `pip check`, pytest, result-file validation,
+artifact upload и post steps.
+
+Run опубликовал artifact `pytest-results-python-3.11`, ID `11118133887`,
+размером `1494` archive bytes. Artifact был скачан через GitHub connector во
+временный каталог. SHA-256 скачанного ZIP
+`44b67a55d353dcb32250aabc9ff15bd59edcf3665ed5b5ae92578d0fb03364ee`
+точно совпал с GitHub digest. `unzip -t` подтвердил целостность архива.
+
+Внутри находились ровно два ожидаемых непустых файла:
+
+- `pytest.xml` — `3481` bytes, `22` tests, `0` failures, `0` errors,
+  `0` skipped;
+- `pytest.log` — `961` bytes и итог `22 passed in 0.19s`.
+
+Удалённая проверка доказывает, что Step 8 не нарушил существующий required
+Python CI и artifact contract на clean GitHub-hosted runner. Supabase CLI
+toolchain был проверен локально через clean `npm ci`; workflow намеренно не
+запускает CLI и database services до появления реальной schema и задач Step
+9/10. В required CI по-прежнему нет production Supabase, secret, credential,
+Docker или physical hardware dependency.
+
+После successful run и artifact inspection `CI_PLAN.md` и `CI_STATE.md`
+переведены в `DONE`. Следующим остаётся Step 9, но его implementation требует
+отдельного авторизованного schema source или подтверждённых greenfield schema
+requirements и должна выполняться только в новой сессии через
+`docs/ci/BOOTSTRAP_PROMPT.md`.

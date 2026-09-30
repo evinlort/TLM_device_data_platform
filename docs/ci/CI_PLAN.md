@@ -154,7 +154,7 @@ Dependencies: Steps 4-6 and relevant application architecture.
 
 ### Step 8 — Define the Supabase schema bootstrap strategy
 
-Status: READY_FOR_COMMIT
+Status: DONE
 
 Acceptance criteria:
 
