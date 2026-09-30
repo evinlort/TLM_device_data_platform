@@ -2200,3 +2200,301 @@ artifact inspection `CI_PLAN.md` и `CI_STATE.md` переведены в `DONE`
 Следующим остаётся Step 7 — local API/storage integration boundary. Его
 реализация в этой сессии не начиналась и должна стартовать только в новой
 сессии через `docs/ci/BOOTSTRAP_PROMPT.md`.
+
+---
+
+## Step 7 — Локальная граница API и Storage Adapter
+
+### Короткий итог
+
+Step 7 добавил минимальную provider-independent границу между приёмом opaque
+device message и его сохранением. Новый протокол `StorageAdapter` знает только
+об операции `store(message: bytes)`. Новый `OpaqueTelemetryAPI` получает body
+реального HTTP request и передаёт эти же bytes adapter без JSON parsing,
+проверки fixture fields или обращения к Supabase.
+
+Для required CI добавлена локальная реализация
+`TemporaryDirectoryStorage`. Она пишет сообщения в отдельные файлы временного
+каталога и позволяет повторно открыть storage другим instance. Это test
+implementation для доказательства настоящей filesystem boundary, а не
+production database или обещание durability.
+
+Интеграционный тест поднимает WSGI server на случайном свободном порту
+`127.0.0.1`, отправляет fixture через существующие `TemporaryFileQueue` и
+`flush_test_queue()`, проходит через test `Transport`, HTTP, API и storage,
+после чего повторно открывает каталог и сравнивает точные bytes. Второй тест
+посылает не-JSON binary message и доказывает, что boundary остаётся opaque.
+
+### Почему этот шаг был нужен
+
+К концу Step 6 CI подробно проверял client-side и fixture behavior: sensor и
+clock boundaries, opaque transport, durable test queue, deterministic envelope,
+duplicate/offline/reconnect, ordering, смену test stream, late data и clock
+skew. Однако успешный `Transport.send(bytes)` всё ещё моделировался только
+`ScriptedTransport`: фактического HTTP request, server-side application seam
+и отдельной storage boundary не существовало.
+
+Нельзя было сразу подключить Supabase. В репозитории нет schema, migration,
+подтверждённых table names, credentials, authorization или RLS semantics.
+Прямая зависимость device code от Supabase URL или table API преждевременно
+закрепила бы provider и продуктовые решения, которые остаются открытыми.
+
+Поэтому Step 7 решает более узкую архитектурную задачу:
+
+1. сохранить существующий device-facing контракт `Transport.send(bytes)`;
+2. доказать передачу через настоящий локальный HTTP socket;
+3. отделить API от способа хранения посредством `StorageAdapter`;
+4. проверить реальный local filesystem I/O;
+5. не интерпретировать временную telemetry fixture как production contract.
+
+Такой seam позволяет следующему storage provider реализовать тот же минимальный
+adapter, не меняя queue или device transport. При этом Step 7 не утверждает,
+что production adapter обязательно будет принимать ровно один opaque blob:
+это минимальная точка интеграции до появления подтверждённой schema.
+
+### Проверка состояния перед изменениями
+
+Перед реализацией были проверены branch, `HEAD`, remote и clean working tree.
+Ветка `ci/github-actions-foundation` и её remote указывали на handoff commit
+`5a1d90c61ef7f52bf3ff35650139ddaf9cf039cf`. Pull Request #1 оставался открыт
+на `main`.
+
+`CI_STATE.md` фиксировал successful implementation run #13 для Step 6. На
+фактическом PR head уже существовал более новый run #14, ID `36731923102`.
+Его job `Python 3.11` и все steps, включая locked install, `pip check`,
+pytest, result validation и artifact upload, завершились с `success`.
+
+Artifact run #14 `pytest-results-python-3.11`, ID `11104568500`, был скачан
+и проверен. SHA-256 ZIP
+`89b5f057df85ce601018842e4ecba87a77e09e29d1f3392903c18f5275bd49db`
+совпал с GitHub digest. `unzip -t` подтвердил целостность, а archive содержал
+ровно непустые `pytest.xml` и `pytest.log`; log завершался `20 passed`.
+Следовательно, activation condition Step 7 была выполнена для актуального
+handoff commit, а не только для предыдущего implementation commit.
+
+### Provider-independent Storage Adapter
+
+В `src/tlm_device_data_platform/local_integration.py` определён structural
+protocol:
+
+```python
+class StorageAdapter(Protocol):
+    def store(self, message: bytes) -> None:
+        ...
+```
+
+Контракт не содержит Supabase client, SQL, table name, identifier,
+`message_id`, timestamp, transaction result или acknowledgement. Он также не
+возвращает product status. Успешное завершение test call означает только, что
+выбранная local implementation не сообщила ошибку.
+
+Такой узкий контракт сохраняет separation of concerns:
+
+```text
+device-side queue and Transport
+  -> HTTP byte stream
+  -> provider-independent API
+  -> StorageAdapter
+  -> replaceable local test implementation
+```
+
+Fixture parser находится за пределами этого потока. API и storage не импортируют
+`telemetry_fixture.py` и не знают о `schema_version`, `message_id`,
+`stream_id`, `sequence_no`, `recorded_at` или `payload`.
+
+### Локальная filesystem implementation
+
+`TemporaryDirectoryStorage` получает путь, предоставленный test harness, и
+при каждом `store()` создаёт следующий файл вида
+`test-message-00000001.bin`. Запись сначала выполняется во временный файл,
+после чего `Path.replace()` перемещает его на окончательное имя. Метод
+`read_all()` читает только ожидаемые record names и возвращает bytes в
+детерминированном порядке.
+
+Повторное создание `TemporaryDirectoryStorage` для того же каталога
+демонстрирует, что результат пересекает настоящую filesystem boundary и не
+остаётся только в памяти первого Python object.
+
+Имена файлов, восемь цифр, последовательная numbering и использование
+`Path.replace()` — local test configuration. Они не являются database
+primary key, production transaction protocol, concurrency solution, retention
+policy, capacity guarantee или crash-durability claim.
+
+### Минимальный HTTP API
+
+`OpaqueTelemetryAPI` реализован как WSGI callable стандартной библиотеки.
+Конструктор получает `StorageAdapter` и явно заданный `test_ingest_path`.
+Для configured `POST` request он:
+
+1. проверяет, что `Content-Length` является неотрицательным целым;
+2. читает ровно указанное число bytes из `wsgi.input`;
+3. передаёт bytes в `StorageAdapter.store()`;
+4. возвращает пустой test response `204 No Content`.
+
+Неверный test route/method получает `404`, некорректная длина — `400`.
+Этот минимальный request handling нужен, чтобы boundary можно было честно
+вызвать через real HTTP server. Он не определяет production API error model.
+
+Маршрут `/test-fixture-telemetry`, response `204` и mapping этого status на
+`Transport.send() == True` прямо помечены как test integration choices.
+Product API URL, authentication headers, acknowledgement body, retryable
+statuses и error contract остаются открытыми.
+
+### Интеграционные сценарии
+
+Новый `tests/test_local_integration.py` использует только Python standard
+library: `wsgiref.simple_server` для server и `urllib.request` для client.
+Новая dependency в `pyproject.toml` или `requirements/test.txt` не
+потребовалась.
+
+#### Полный queued fixture flow
+
+`test_fixture_crosses_real_local_http_and_storage_boundaries` выполняет
+следующую цепочку:
+
+```text
+serialize TEST FIXTURE envelope to bytes
+  -> enqueue bytes in TemporaryFileQueue
+  -> start WSGI server on 127.0.0.1 and an OS-assigned port
+  -> flush_test_queue calls the test HTTP Transport
+  -> urllib sends a real POST request
+  -> OpaqueTelemetryAPI reads the exact request body
+  -> StorageAdapter.store writes a local binary record
+  -> configured 204 maps to successful test delivery
+  -> queue removes the delivered fixture
+  -> server stops
+  -> a new storage instance reopens the directory
+  -> exact stored bytes equal the serialized message
+  -> fixture parser is used only by the test after storage
+```
+
+Проверка parser в последнем пункте подтверждает, что сохранённый blob не был
+изменён. Она не переносит parsing внутрь API или Storage Adapter.
+
+Server bind использует только `127.0.0.1` и port `0`, поэтому операционная
+система выбирает свободный local port. Нет фиксированного порта, sleep,
+external DNS или внешнего service. Teardown всегда вызывает
+`shutdown()`, `server_close()` и `Thread.join()`.
+
+#### Непрозрачный binary message
+
+`test_local_api_and_storage_keep_non_fixture_bytes_opaque` отправляет bytes с
+`NUL`, обычным текстом, который намеренно не является telemetry JSON, и
+`0xff`. Повторно открытый storage возвращает точное исходное значение.
+
+Этот тест важен архитектурно: первый сценарий использует fixture envelope, и
+без отдельного binary case можно было бы случайно связать API с JSON parser.
+Binary case доказывает, что реальная boundary реализована на `bytes`, а
+fixture interpretation остаётся отдельным test layer.
+
+### Что происходило во время реализации и как решались проблемы
+
+#### Первый locked reinstall не имел network access
+
+Запуск canonical install внутри restricted Codex sandbox не смог разрешить
+PyPI host и завершился при попытке получить закреплённый
+`setuptools==84.0.0`. Это не было dependency conflict или дефектом lock.
+Команда была повторена с явно разрешённым network access, после чего wheel
+успешно собрался и переустановился, а `pip check` сообщил
+`No broken requirements found`.
+
+Не добавлялись editable install, `PYTHONPATH` или обход build isolation.
+Таким образом, tests продолжили работать против установленного wheel.
+
+#### Restricted sandbox запретил loopback socket
+
+Targeted suite, запущенный с разрешённой local socket capability, сразу прошёл.
+Первый workflow-equivalent full run внутри sandbox собрал все 22 tests, но два
+новых tests получили `PermissionError: [Errno 1] Operation not permitted` в
+`socket.socket()`; остальные 20 tests прошли.
+
+Это было точно локализовано как security restriction среды Codex: bind не
+успевал обратиться к application code, а endpoint был `127.0.0.1`. Та же
+полная команда была повторена вне socket restriction и завершилась
+`22 passed`. Затем integration suite прошёл пять раз подряд. Код не был
+ослаблен mock HTTP вызовом, потому что цель Step 7 прямо требует real local
+HTTP boundary where practical.
+
+GitHub-hosted runner обычно разрешает loopback sockets; окончательное remote
+доказательство будет получено только после approved commit/push. До этого
+Step 7 имеет статус `READY_FOR_COMMIT`, а не `DONE`.
+
+#### Нужно было не превратить local API в production contract
+
+Добавление даже маленького HTTP endpoint создаёт риск, что его URL, status и
+payload начнут восприниматься как продуктовые требования. Поэтому module
+docstring, class docstrings, test identifiers и durable решение
+`CI-DEC-011` явно отделяют test configuration от production semantics.
+
+Также не был добавлен `HttpTransport` в production package. Test-local
+`_LoopbackHTTPTransport` только адаптирует configured `204` к существующему
+boolean test contract. Будущая production transport/acknowledgement policy
+требует отдельного решения.
+
+### Проверка и что она доказывает
+
+Локально на Python 3.11.9 выполнены locked reinstall, dependency check,
+workflow-equivalent pytest, повторные integration runs и дополнительные
+static/artifact checks.
+
+Результаты:
+
+- locked wheel build и reinstall: PASS;
+- dependency consistency: PASS (`No broken requirements found`);
+- targeted Step 7 suite: PASS (`2 passed`);
+- полный suite: PASS (`22 passed`);
+- pytest exit status: `0`;
+- JUnit XML: `22` tests, `0` failures, `0` errors, `0` skipped;
+- `pytest.xml` и `pytest.log`: созданы и непусты;
+- Step 7 suite пять раз подряд: PASS (`2 passed` каждый раз);
+- installed-package import из `/tmp`: PASS;
+- forbidden provider/credential/hardware/random/uncontrolled-time scan: PASS;
+- workflow по-прежнему создаёт, проверяет и загружает оба result files с
+  `always()` и `if-no-files-found: error`;
+- никаких новых dependencies: подтверждено неизменностью `pyproject.toml` и
+  `requirements/test.txt`.
+
+Импорт из `/tmp` разрешил `local_integration.py` из
+`.venv/lib/python3.11/site-packages`, что подтверждает installed-package
+boundary. Пять повторов real HTTP tests проверяют отсутствие зависимости от
+фиксированного порта, test order или оставшегося server state. Они не являются
+performance или load test.
+
+Full suite подтверждает, что новый layer не сломал существующие package,
+simulation, fixture, delivery и ordering contracts. Binary test доказывает
+opaque behavior; reopened storage доказывает фактический filesystem I/O;
+loopback request доказывает настоящий HTTP boundary.
+
+### Что сознательно осталось вне Step 7
+
+Step 7 не определял и не реализовывал:
+
+- production API URL, framework, versioning или response schema;
+- TLS, credentials, device identity, roles, authorization или RLS;
+- production telemetry envelope или server-side validation;
+- production acknowledgement, retryable status или error semantics;
+- Supabase client, table, PostgreSQL schema, migration или CLI configuration;
+- database transaction, unique constraint, idempotency или conflict resolution;
+- production ordering, current-state materialization, late-data или retention;
+- concurrency, locking, crash recovery, capacity, throughput или durability
+  guarantee для local files;
+- Docker, external service, production secret или remote database access;
+- новые dependencies, caching, lint, type checking или coverage threshold;
+- deployment, branch protection, Pull Request merge или Hardware-in-the-Loop;
+- Step 8 Supabase schema bootstrap strategy.
+
+Все route/status/file layout значения являются test configuration. Все
+перечисленные product semantics остаются открытыми.
+
+### Состояние перед commit approval
+
+Implementation, tests, local validation и persistent handoff подготовлены.
+`CI_PLAN.md` и `CI_STATE.md` имеют статус `READY_FOR_COMMIT`.
+`NEXT_SESSION.md` описывает Step 8, но запрещает начинать его до approved
+commit/push Step 7, successful Pull Request workflow и inspection нового
+artifact.
+
+Удалённая проверка Step 7 пока намеренно не заявлена. После явного разрешения
+нужно зафиксировать и отправить изменения, дождаться required workflow,
+скачать его artifact, сверить digest, JUnit и log, затем завершить handoff. До
+этого Step 7 не получает статус `DONE`, а Step 8 не начинается.

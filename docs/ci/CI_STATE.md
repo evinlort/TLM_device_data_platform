@@ -3,11 +3,8 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Step 6 implementation commit:
-  `dac48925b2f5f0d09627a9f02b2783d332c31595`.
-- The commit containing this file finalizes the Step 6 handoff; use
-  `git rev-parse HEAD` for its exact SHA without creating a self-referential
-  state update.
+- Current committed HEAD before Step 7:
+  `5a1d90c61ef7f52bf3ff35650139ddaf9cf039cf`.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: public `evinlort/TLM_device_data_platform` with `main` as
@@ -15,64 +12,67 @@
   is intentional.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open from `ci/github-actions-foundation` to `main`.
-- GitHub Actions
-  [CI #13](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36730767093)
-  completed successfully for the Step 6 implementation commit. Its
-  `Python 3.11` job completed locked installation, dependency checking,
-  pytest, result-file validation, and artifact upload successfully.
-- Step 6 artifact `pytest-results-python-3.11`, ID `11105275969`, was
-  downloaded and inspected. Its GitHub digest and the downloaded ZIP SHA-256
-  both equal
-  `3bf8dd9be495b94d0266244438d373cc94f78fde8332a9ceb022221ff6c9ab37`.
-- Working tree: expected to be clean after the approved final Step 6 handoff
-  commit.
+- The latest pre-Step 7 Pull Request run is
+  [CI #14](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36731923102)
+  for HEAD `5a1d90c61ef7f52bf3ff35650139ddaf9cf039cf`; its `Python 3.11`
+  job completed successfully.
+- The run #14 artifact `pytest-results-python-3.11`, ID `11104568500`, was
+  downloaded and inspected. Its GitHub digest and downloaded ZIP SHA-256 both
+  equal
+  `89b5f057df85ce601018842e4ecba87a77e09e29d1f3392903c18f5275bd49db`.
+- Working tree: contains the uncommitted, locally validated Step 7
+  implementation and handoff described below.
 
 ## Current milestone
 
-- Step: Step 6 — Add ordering, stream, and late-data scenarios.
-- Status: DONE.
-- Completion blockers: none.
+- Step: Step 7 — Establish the local API/storage integration boundary.
+- Status: READY_FOR_COMMIT.
+- Local implementation and validation: complete.
+- Completion blockers: explicit user approval for commit/push, followed by a
+  successful Pull Request workflow and inspection of its published artifact.
 
 ## Verified facts
 
-- `TelemetryFixtureProjection` is explicitly deterministic test-only
-  orchestration, not a production persistence or conflict-resolution model.
-- Every parsed fixture observation is retained in immutable-view history with
-  a deterministic `observation_no` and separately supplied `observed_at`.
-- `recorded_at` remains untrusted fixture data and never activates a stream or
-  decides `current_state`.
-- Sequence comparison applies only to the stream explicitly activated by the
-  test harness. A higher sequence in an inactive stream stays in history and
-  cannot replace the active stream's current state.
-- Explicit `activate_test_stream()` resets only the fixture current-state
-  projection, so the newly selected stream may begin at sequence `1` while
-  prior observations remain in history.
-- Existing `Transport` and `DurableQueue` boundaries still carry opaque
-  serialized `bytes`; no fixture parsing was added to those boundaries.
-- No runtime or test dependency was added, and `.github/workflows/ci.yml` did
-  not require a change.
-- No physical hardware, wall-clock wait, random input, network service,
-  credential, API, database, Supabase, PostgreSQL, or Docker dependency is
-  used by the new scenarios.
+- `StorageAdapter` is a structural, provider-independent boundary whose only
+  operation stores opaque `bytes`.
+- `OpaqueTelemetryAPI` is a minimal WSGI application that passes an HTTP
+  request body to the configured `StorageAdapter` without parsing telemetry or
+  importing any Supabase/database implementation.
+- `TemporaryDirectoryStorage` is explicitly a local CI implementation. Its
+  ordered file names and durability properties are test configuration, not a
+  production schema or persistence guarantee.
+- The configured test route `/test-fixture-telemetry` and HTTP `204` outcome
+  are test integration choices, not a production URL or acknowledgement
+  contract.
+- The full deterministic scenario crosses the existing queue and `Transport`
+  boundaries, a real `127.0.0.1` HTTP socket, the WSGI API, and a temporary
+  filesystem boundary, then reopens storage and verifies the exact bytes.
+- A separate scenario sends non-JSON bytes containing `NUL` and `0xff` and
+  proves that API/storage preserve them unchanged rather than interpreting the
+  test fixture contract.
+- No runtime or test dependency was added. The HTTP server/client and WSGI
+  boundary use the Python standard library.
+- `.github/workflows/ci.yml`, `pyproject.toml`, and `requirements/test.txt` did
+  not require changes.
+- No physical hardware, production service, Docker, credential, secret,
+  Supabase, PostgreSQL, schema, migration, or external network dependency is
+  used by required CI.
 - `docs/ci/FLOW_EXPLANATIONS.md` contains detailed Russian explanations for
-  Steps 1 through 6.
+  Steps 1 through 7.
 
-## Implemented in Step 6
+## Implemented in Step 7
 
-- `ObservedTelemetryFixture` records fixture arrival order, controlled
-  observation time, and the parsed envelope without conflating observation
-  time with device-provided `recorded_at`.
-- `TelemetryFixtureProjection` keeps complete test history and updates
-  `current_state` only for a higher sequence in the explicitly active test
-  stream.
-- An out-of-order scenario ingests fixture sequence `1, 3, 2`, retains that
-  exact history, and proves current state remains sequence `3`.
-- A reboot scenario explicitly switches fixture streams and proves the new
-  stream can restart at sequence `1` without deleting earlier history.
-- A late-data scenario proves a later observation from the inactive pre-reboot
-  stream remains in history and cannot replace the post-reboot current state.
-- A controlled clock-skew scenario proves past and far-future `recorded_at`
-  values neither choose current state nor activate another fixture stream.
+- Added `src/tlm_device_data_platform/local_integration.py` with:
+  - the provider-independent `StorageAdapter` protocol;
+  - the opaque WSGI `OpaqueTelemetryAPI` boundary;
+  - the deterministic local `TemporaryDirectoryStorage` implementation.
+- Added `tests/test_local_integration.py` with:
+  - an end-to-end queued fixture flow over real loopback HTTP into storage;
+  - exact persisted-byte and reopened-storage verification;
+  - an opaque non-fixture binary-message scenario.
+- Existing `simulation.py` and `telemetry_fixture.py` contracts were reused
+  without adding provider details or promoting fixture fields to production
+  semantics.
 
 ## Validation
 
@@ -82,39 +82,30 @@ Local environment:
 - Locked project reinstall: PASS.
 - `.venv/bin/python -m pip check`: PASS
   (`No broken requirements found`).
-- Workflow-equivalent full pytest command: PASS (`20 passed`), returning
+- Targeted Step 7 suite: PASS (`2 passed`).
+- Workflow-equivalent full pytest command: PASS (`22 passed`), returning
   status `0` and creating both non-empty result files.
-- JUnit XML parse: PASS (`20` tests, `0` failures, `0` errors, `0` skipped).
-- Step 6 scenario suite repeated five times: PASS (`4 passed` each time).
-- Installed-package import from `/tmp`: PASS;
-  `TelemetryFixtureProjection` resolves from
-  `.venv/lib/python3.11/site-packages`, not the source tree.
-- Forbidden hardware/production dependency and uncontrolled-time scan: PASS.
+- JUnit XML parse: PASS (`22` tests, `0` failures, `0` errors, `0` skipped).
+- Step 7 integration suite repeated five times: PASS (`2 passed` each time).
+- Installed-package import from `/tmp`: PASS; `local_integration.py` resolves
+  from `.venv/lib/python3.11/site-packages`, not the source tree.
+- Forbidden production dependency, credential, hardware, random-input, and
+  uncontrolled-time scan: PASS.
 - Existing artifact contract: PASS; the workflow still creates and uploads
   both `test-results/pytest.xml` and `test-results/pytest.log` with always-run
   validation and upload behavior.
-- `git diff --check`: PASS.
+- `git diff --check` and untracked-file whitespace/newline validation: PASS.
 
-The first targeted Step 6 test run used the previously installed Step 5 wheel
-and failed collection because the new projection class was intentionally not
-importable from the source tree. Reinstalling the current project with the
-locked command rebuilt the wheel; the targeted and full suites then passed.
-No import-path workaround or dependency change was made.
+The first locked reinstall attempt ran inside the restricted Codex sandbox and
+could not resolve PyPI. The approved network-enabled retry rebuilt and
+installed the wheel successfully. A sandboxed full test run then reported
+`PermissionError` only for creation of a loopback TCP socket (`20 passed`, `2`
+failed); the same full command outside that socket restriction passed all `22`
+tests. The targeted loopback suite also passed once and then five repeated
+runs outside the socket-restricted sandbox. No external host was contacted by
+the tests.
 
-Remote Step 6 validation:
-
-- Workflow: `CI`, run ID `36730767093`, run number `13`.
-- Commit: `dac48925b2f5f0d09627a9f02b2783d332c31595`.
-- Job: `Python 3.11`; every job step completed with conclusion `success`.
-- Artifact: `pytest-results-python-3.11`, ID `11105275969`, `1393` archive
-  bytes, not expired when inspected.
-- The GitHub-reported and downloaded ZIP SHA-256 both equal
-  `3bf8dd9be495b94d0266244438d373cc94f78fde8332a9ceb022221ff6c9ab37`.
-- The downloaded ZIP passed archive integrity validation and contained exactly
-  the expected non-empty `pytest.xml` (`3218` bytes) and `pytest.log` (`881`
-  bytes).
-- Downloaded JUnit XML: `20` tests, `0` failures, `0` errors, `0` skipped.
-- Downloaded pytest log: PASS; it contains the `20 passed` summary.
+Remote Step 7 validation is intentionally pending commit approval and push.
 
 ## Current CI
 
@@ -130,18 +121,23 @@ Remote Step 6 validation:
   - artifact name: `pytest-results-python-3.11`.
 - Current suite: one installed-package boundary test, four deterministic
   simulator-boundary tests, seven telemetry-fixture contract cases, four
-  Step 5 delivery scenarios, and four Step 6 ordering scenarios; `20` tests
-  total.
+  delivery scenarios, four ordering scenarios, and two local HTTP/storage
+  integration scenarios; `22` tests total.
 
 ## Current database state
 
 - No version-controlled schema or Supabase configuration exists.
 - No local or remote database operation has been performed.
+- `TemporaryDirectoryStorage` is a filesystem CI adapter and is not a
+  database, schema prototype, or Supabase emulator.
 
 ## Product decisions still OPEN
 
 - Product telemetry envelope, field names, schema versions, field semantics,
   and rates per `system_type`.
+- Production API URL, HTTP contract, acknowledgement and error semantics.
+- Production Storage Adapter implementation, database schema, transactions,
+  retention, and conflict-resolution policy.
 - Production history, current-state, stream identity, reboot, ordering,
   late-data, timestamp trust, and conflict-resolution policy.
 - Credential implementation and provisioning details.
@@ -154,10 +150,10 @@ Remote Step 6 validation:
 
 See `docs/ci/CI_PLAN.md` for the fuller list and affected future milestones.
 
-## Files changed in Step 6
+## Files changed in Step 7
 
-- `src/tlm_device_data_platform/telemetry_fixture.py`
-- `tests/test_ordering_scenarios.py`
+- `src/tlm_device_data_platform/local_integration.py`
+- `tests/test_local_integration.py`
 - `docs/ci/CI_PLAN.md`
 - `docs/ci/CI_STATE.md`
 - `docs/ci/NEXT_SESSION.md`
@@ -169,10 +165,11 @@ not require changes.
 
 ## Next step
 
-- Step: Step 7 — Establish the local API/storage integration boundary.
-- Step 6 is committed, pushed, successful in the Pull Request workflow, and
-  its published artifact has been downloaded and inspected.
-- Step 7 must start in a new Codex session.
+- Step: Step 8 — Define the Supabase schema bootstrap strategy.
+- Do not start Step 8 until Step 7 is committed, pushed, successful in the
+  Pull Request workflow, and its published artifact has been downloaded and
+  inspected.
+- Step 8 must start in a new Codex session.
 
-Use `docs/ci/BOOTSTRAP_PROMPT.md` for that new session. Do not start Step 7 in
+Use `docs/ci/BOOTSTRAP_PROMPT.md` for that new session. Do not start Step 8 in
 this session.

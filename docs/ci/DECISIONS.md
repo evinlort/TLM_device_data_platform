@@ -338,3 +338,48 @@ Source:
 Step 6 deterministic ordering-scenario implementation and the existing
 `CI-DEC-001`, `CI-DEC-002`, `CI-DEC-007`, `CI-DEC-008`, and `CI-DEC-009`
 constraints.
+
+## CI-DEC-011 — Opaque provider-independent API/storage boundary
+
+Status: ACCEPTED
+
+Decision:
+
+Define the first application integration seam as a structural
+`StorageAdapter.store(message: bytes)` protocol. Exercise it through
+`OpaqueTelemetryAPI`, a minimal WSGI application that passes the exact HTTP
+request body to the adapter without parsing telemetry fields. Use
+`TemporaryDirectoryStorage` and a test-configured loopback route/status only
+for deterministic local CI.
+
+Reason:
+
+Step 7 must prove a real HTTP and storage integration flow while the production
+telemetry contract, API, acknowledgement, persistence provider, database
+schema, identity, and authorization rules remain unconfirmed. An opaque byte
+boundary connects the existing device-facing `Transport` to replaceable
+application storage without coupling device code to Supabase or turning test
+fixture fields into production requirements.
+
+Consequences:
+
+- `StorageAdapter` does not prescribe a database, table, schema, transaction,
+  identifier, idempotency rule, ordering rule, or acknowledgement policy.
+- `OpaqueTelemetryAPI` deliberately does not import or invoke fixture parsing;
+  interpretation may be added only behind separately confirmed contracts.
+- `/test-fixture-telemetry`, HTTP `204`, numbered local files, and the test
+  mapping from that status to `Transport.send() == True` are test
+  configuration, not production API or delivery semantics.
+- `TemporaryDirectoryStorage` proves a real filesystem boundary and reopening
+  behavior only; it is not production durability, concurrency, retention, or
+  database behavior.
+- Required CI needs no external service, Docker, secret, credential, Supabase,
+  PostgreSQL, or new Python dependency for this boundary.
+- Step 8 must define the Supabase/schema bootstrap strategy separately before
+  adding provider-specific schema or tooling.
+
+Source:
+
+Step 7 local HTTP/storage integration implementation and the existing
+`CI-DEC-001`, `CI-DEC-002`, `CI-DEC-007`, `CI-DEC-008`, `CI-DEC-009`, and
+`CI-DEC-010` constraints.

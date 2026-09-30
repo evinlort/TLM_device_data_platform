@@ -141,7 +141,7 @@ Dependencies: Step 5.
 
 ### Step 7 — Establish the local API/storage integration boundary
 
-Status: NOT_STARTED
+Status: READY_FOR_COMMIT
 
 Acceptance criteria:
 

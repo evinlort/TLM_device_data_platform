@@ -2,18 +2,18 @@
 
 ## Activation condition
 
-Step 7 may start only after Step 6 is committed, pushed, successful in the
+Step 8 may start only after Step 7 is committed, pushed, successful in the
 Pull Request workflow, and the published test-results artifact has been
-downloaded and inspected. Before any Step 7 change, verify that the actual
+downloaded and inspected. Before any Step 8 change, verify that the actual
 branch, HEAD, remote, clean working tree, Pull Request, latest required CI
 result, artifact listing, and downloaded artifact agree with
-`docs/ci/CI_STATE.md`. If Step 6 changes are still uncommitted, its remote
+`docs/ci/CI_STATE.md`. If Step 7 changes are still uncommitted, its remote
 check is pending or failed, or its artifact has not been inspected, finish or
-investigate Step 6 instead of starting Step 7.
+investigate Step 7 instead of starting Step 8.
 
 ## Step
 
-Step 7 — Establish the local API/storage integration boundary
+Step 8 — Define the Supabase schema bootstrap strategy
 
 ## Read first
 
@@ -26,83 +26,77 @@ Step 7 — Establish the local API/storage integration boundary
 
 Additional files relevant to this step:
 
-- `src/tlm_device_data_platform/simulation.py`
-- `src/tlm_device_data_platform/telemetry_fixture.py`
-- `tests/test_delivery_scenarios.py`
-- `tests/test_ordering_scenarios.py`
-- `tests/test_simulation.py`
-- `tests/test_telemetry_fixture.py`
+- `src/tlm_device_data_platform/local_integration.py`
+- `tests/test_local_integration.py`
 - `.github/workflows/ci.yml`
 - `pyproject.toml`
 - `requirements/test.txt`
 
-Do not read unrelated future files unless the current step requires them.
+Inspect any Supabase/schema/configuration files that exist at the start of the
+session. Do not read unrelated future files unless the current step requires
+them.
 
 ## Goal
 
-Establish and test the smallest provider-independent local API and storage
-integration boundary that can accept opaque device telemetry through a real
-local HTTP boundary where practical, while keeping device-facing code
-independent of Supabase and avoiding unconfirmed Product semantics.
+Determine and document a safe, reproducible strategy for establishing a
+version-controlled local Supabase/PostgreSQL schema from the repository and
+any explicitly authorized schema source, without destructive production
+operations or invented Product authorization/data semantics.
 
 ## Current verified starting point
 
-- Required CI has deterministic package, simulator, telemetry-fixture,
-  delivery, ordering, stream, late-data, and clock-skew coverage.
-- `Transport` and `DurableQueue` carry opaque serialized `bytes` and have no
-  Supabase knowledge.
-- `TelemetryFixtureProjection` is explicitly test-only orchestration and is
-  not a production storage adapter or conflict-resolution policy.
-- No API framework, HTTP server/client dependency, Storage Adapter, database,
-  Supabase configuration, or version-controlled schema exists.
-- Product telemetry, authentication, authorization, storage, idempotency,
-  ordering, and acknowledgement semantics remain open.
+- Required CI has a provider-independent `StorageAdapter`, an opaque WSGI API,
+  and deterministic real-loopback/local-filesystem integration coverage.
+- Device-facing `Transport` and API/storage boundaries contain no Supabase
+  URLs, credentials, tables, or schema details.
+- No Supabase configuration, migration, PostgreSQL schema, database test, CLI
+  dependency, or local database job exists.
+- Product telemetry, identity, authorization, RLS, retention, idempotency,
+  ordering, and persistence semantics remain open.
 
 ## Allowed scope
 
-- Inspect the existing architecture and define the minimum provider-independent
-  API and Storage Adapter abstractions needed by this step.
-- Add deterministic local integration tests using real local HTTP and local
-  storage boundaries where possible without production services.
-- Add only dependencies that are necessary, pinned, and reproducibly
-  validated for this boundary.
+- Inspect repository schema/configuration sources and any remote source the
+  user explicitly authorizes.
+- Verify current official Supabase CLI and local-development guidance.
+- Explain and record the migration/bootstrap strategy before any schema pull
+  or implementation.
+- Add only the minimal non-destructive bootstrap configuration justified by
+  verified facts and the exact Step 8 strategy.
 - CI handoff updates and validation required by this step.
 
 ## Out of scope
 
-- Supabase schema, migrations, CLI bootstrap, PostgreSQL, production or remote
-  database access, and Step 8 implementation.
-- Production credentials, identity, roles, authorization, RLS policy, device
-  provisioning, or secrets.
-- Confirming a production telemetry envelope, acknowledgement, idempotency,
-  ordering, retention, conflict-resolution, or error-response contract.
-- Deployment, branch protection, caching, lint, type checking, coverage
-  thresholds, performance, scale, or SLO claims.
+- Destructive production or remote database operations.
+- Inventing tables, columns, credentials, roles, RLS, authorization, retention,
+  idempotency, ordering, or conflict-resolution rules.
+- Step 9 local database rebuild/tests and Step 10 integration CI job.
+- Production deployment, branch protection, caching, lint, type checking,
+  coverage thresholds, performance, scale, or SLO claims.
 
 ## Required investigation
 
 - Reconfirm repository, Pull Request, CI, and artifact state before changes.
-- Determine whether any actual API or Storage Adapter abstraction exists; if
-  none exists, introduce only the minimum provider-independent boundary.
-- Keep Supabase-specific URLs, tables, credentials, and schema details out of
-  the device-facing contract.
-- Prefer a real loopback HTTP boundary and deterministic temporary local
-  storage without requiring network services, Docker, secrets, or production
-  infrastructure.
-- Keep fixture-only fields and outcomes clearly separated from Product
-  requirements.
+- Determine whether any repository or explicitly authorized remote schema
+  source exists at that time.
+- Verify current official Supabase CLI installation, initialization, local
+  development, migration, schema pull, and safety guidance.
+- Explain the proposed source of truth and bootstrap/rebuild flow before
+  running any schema command.
+- Stop for explicit user authorization before accessing a remote schema or
+  performing any operation whose target or destructive effect is unclear.
 
 ## Validation
 
-Run the locked install, `pip check`, and full pytest suite. Exercise the local
-HTTP/storage integration deterministically, repeat the relevant suite, confirm
-installed-package imports, scan for forbidden production dependencies and
-credentials, confirm the workflow still creates both test-result files, and
-run `git diff --check`. After approved commit and push, verify the updated Pull
-Request workflow and inspect its published artifact.
+Validate every configuration or documentation change that Step 8 actually
+introduces. Preserve the locked Python checks and full pytest suite, confirm
+that required CI still has no production service or secret dependency, verify
+installed-package imports where relevant, confirm the test-result artifact
+contract, and run `git diff --check`. After approved commit and push, verify
+the updated Pull Request workflow and inspect its published artifact.
 
 ## Stop condition
 
-After Step 7 implementation, validation, state update, approved commit/push,
-successful Pull Request workflow verification, and artifact inspection. Do not
-start Step 8 in the same session.
+After Step 8 strategy/configuration, validation, state update, approved
+commit/push, successful Pull Request workflow verification, and artifact
+inspection. Do not start Step 9 in the same session.
