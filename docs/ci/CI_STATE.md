@@ -3,112 +3,89 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- HEAD: the commit containing this file includes completed Step 2 and the
-  current documentation protocol; use
-  `git rev-parse HEAD` to obtain its exact SHA without creating a
-  self-referential state update.
+- Base HEAD before the uncommitted Step 3 work:
+  `67ddea716aa48956b717bf1004084fa393208a47`.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: private `evinlort/TLM_device_data_platform` with `main`
   as the default branch.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open from `ci/github-actions-foundation` to `main` and is mergeable.
-- Working tree: expected to be clean after the approved final Step 2 handoff
-  commit.
+- The current remote HEAD check `CI / Python 3.11` is successful.
+- Working tree: contains the completed, locally validated, uncommitted Step 3
+  implementation and handoff updates pending explicit commit approval.
 
 ## Current milestone
 
-- Step: Step 2 — Add the Python GitHub Actions foundation.
-- Status: DONE.
-- Completion blockers: none.
+- Step: Step 3 — Define deterministic simulator boundaries.
+- Status: READY_FOR_COMMIT.
+- Remaining completion gates: explicit commit/push approval and a successful
+  Pull Request workflow for the pushed Step 3 HEAD.
 
 ## Verified facts
 
 - Python 3.11 remains the minimum supported project version for the initial
   baseline.
-- The Step 1 locked installation and mandatory checks pass in a newly created
-  isolated `.venv` using Python 3.11.9 and pip 24.0.
-- The package imports from the installed wheel in `site-packages`, not from
-  the source tree.
-- GitHub documents explicit least-privilege workflow permissions and
-  full-length commit SHA action pins as security practices.
-- The official action releases and upstream tag SHAs used by the workflow are:
-  - `actions/checkout@v7.0.1`:
-    `3d3c42e5aac5ba805825da76410c181273ba90b1`.
-  - `actions/setup-python@v7.0.0`:
-    `5fda3b95a4ea91299a34e894583c3862153e4b97`.
-- Repository Actions are enabled with all actions allowed.
-- GitHub Actions workflow run
-  [CI #1](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36674668467)
-  completed successfully for implementation commit
-  `72380506cbae287db8858a55e041fd4186054f1a`.
-- The `Python 3.11` job and every configured step completed successfully.
-- `docs/ci/FLOW_EXPLANATIONS.md` contains the detailed Russian explanation
-  of Steps 1 and 2.
-- Starting with Step 3, every completed step must append its explanation to
-  that file after validation and before commit approval.
+- The existing locked install, `pip check`, and pytest flow remains valid.
+- The simulator boundaries use no physical hardware, wall clock, network,
+  Docker, Supabase, secret, or production service.
+- Sensor readings stay generic and transport/queue messages stay opaque
+  `bytes`; no product telemetry envelope or field has been defined.
+- Test readings, time, delivery outcomes, messages, and paths are explicitly
+  test fixtures or test configuration.
+- The temporary queue persists FIFO content across new queue instances using
+  a file under pytest's temporary directory. It defines no production
+  durability, retention, capacity, retry, or replay guarantee.
+- `docs/ci/FLOW_EXPLANATIONS.md` contains detailed Russian explanations for
+  Steps 1 through 3.
 
-## Implemented
+## Implemented in Step 3
 
-- One Pull Request workflow at `.github/workflows/ci.yml`.
-- Workflow-level `contents: read` permission.
-- Per-PR concurrency with cancellation of superseded runs.
-- One `ubuntu-latest` Python 3.11 job with a 10-minute timeout.
-- Full-SHA pins for `actions/checkout` and `actions/setup-python`.
-- Checkout credential persistence disabled.
-- The exact Step 1 install, dependency-consistency, and pytest commands.
-- No `pull_request_target`, secret, production service, hardware, Docker,
-  Supabase, cache, test split, coverage threshold, lint, or type-check layer.
+- Provider-independent `Sensor`, `Clock`, `Transport`, and `DurableQueue`
+  protocols in `src/tlm_device_data_platform/simulation.py`.
+- Deterministic `SequenceSensor`, `ManualClock`, and `ScriptedTransport` test
+  implementations.
+- `TemporaryFileQueue`, a temporary-filesystem FIFO test implementation with
+  replacement-based file updates.
+- Unit tests for configured reading order and exhaustion, manually controlled
+  time, scripted delivery failure/success and attempt capture, plus queue FIFO
+  persistence across instances.
+- No runtime or test dependency was added.
 
 ## Validation
 
-Local commands executed:
+Local environment:
 
-- `python3 -m venv .venv`
-- `.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'`
-- `.venv/bin/python -m pip check`
-- `.venv/bin/python -m pytest`
-- Installed-package path verification from outside the repository root.
-- Ruby/Psych YAML parse of `.github/workflows/ci.yml`.
-- Explicit assertions for the trigger, permissions, concurrency cancellation,
-  timeout, full-SHA pins, mandatory commands, and absence of unsafe event or
-  secret references.
-- `git diff --check`
-- `git ls-remote` verification of the two official action release tags.
+- Python: `3.11.9`.
+- Locked project reinstall: PASS.
+- `.venv/bin/python -m pip check`: PASS
+  (`No broken requirements found`).
+- `.venv/bin/python -m pytest -q`, repeated five times: PASS each time
+  (`5 passed`).
+- Installed-package import from `/tmp`: PASS; `simulation.py` resolved from
+  `.venv/lib/python3.11/site-packages`.
+- Forbidden external-dependency scan across `src` and `tests`: PASS; no wall
+  clock, sleep, network client, Supabase, PostgreSQL, Docker, or secret use.
+- `git diff --check`: PASS before handoff updates and must be rerun on the
+  final diff.
 
-Local results:
+The first reinstall attempt inside the restricted sandbox could not download
+the pinned PEP 517 build dependency. The same locked command succeeded after
+network access was explicitly approved; this was an environment access issue,
+not a package or test failure.
 
-- Clean isolated installation: PASS.
-- Dependency consistency: PASS (`No broken requirements found`).
-- Tests: PASS (`1 passed`).
-- Installed-package boundary: PASS.
-- YAML syntax: PASS.
-- Workflow security/semantics assertions: PASS.
-- Whitespace validation: PASS.
-
-Remote result:
-
-- Workflow: `CI`, run ID `36674668467`, run number `1`.
-- Job: `Python 3.11`.
-- Conclusion: SUCCESS.
-- Successful configured steps: checkout, Python setup, locked installation,
-  dependency consistency, and pytest.
+Remote validation for the pushed Step 3 HEAD is pending commit approval.
 
 ## Current CI
 
 - Pull Request workflow: `.github/workflows/ci.yml`.
 - Required Python job: `CI / Python 3.11`.
 - Local reproduction:
-  - `python3 -m venv .venv`
   - `.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'`
   - `.venv/bin/python -m pip check`
   - `.venv/bin/python -m pytest`
-- Tests: one deterministic installed-package boundary test.
-
-## Current simulator state
-
-- No simulator exists.
-- No physical device is available or required for planned PR CI.
+- Current suite: one installed-package boundary test and four deterministic
+  simulator-boundary tests.
 
 ## Current database state
 
@@ -125,36 +102,24 @@ Remote result:
 
 See `docs/ci/CI_PLAN.md` for the fuller list and affected future milestones.
 
-## Technical blockers
+## Files changed in Step 3
 
-- None for Step 3.
-
-## Explanation protocol
-
-- `CI_PLAN.md`, `CI_STATE.md`, and `NEXT_SESSION.md` remain compact
-  coordination sources.
-- `FLOW_EXPLANATIONS.md` explains the complete human-readable flow and is
-  appended after every validated step before commit approval.
-- Each new section must cover purpose, starting state, changes, end-to-end
-  mechanics, problem resolution, validation meaning, and intentionally
-  excluded scope.
-
-## Files changed in the completed step
-
-- `.github/workflows/ci.yml`
+- `src/tlm_device_data_platform/simulation.py`
+- `tests/test_simulation.py`
 - `docs/ci/CI_PLAN.md`
 - `docs/ci/CI_STATE.md`
 - `docs/ci/NEXT_SESSION.md`
+- `docs/ci/DECISIONS.md`
+- `docs/ci/FLOW_EXPLANATIONS.md`
 
 ## Next step
 
-- Step: Step 3 — Define deterministic simulator boundaries.
-- Goal: define the smallest fake sensor, clock, transport, and temporary
-  durable queue boundaries and prove deterministic behavior with unit tests.
-- Do not invent product telemetry, timing, capacity, credential, or
-  authorization requirements.
-- Required CI must remain independent of physical hardware and production
-  services.
+- Step: Step 4 — Add normal telemetry and contract scenarios.
+- Activation requires Step 3 to be committed, pushed, and successful in the
+  Pull Request workflow.
+- Step 4 must define only a confirmed or explicitly test-only telemetry
+  envelope and controlled malformed/version rejection behavior.
 
-Step 3 must start in a new Codex session using
-`docs/ci/BOOTSTRAP_PROMPT.md`.
+Step 4 must start in a new Codex session using
+`docs/ci/BOOTSTRAP_PROMPT.md`. Do not start it while Step 3 completion gates
+remain open.

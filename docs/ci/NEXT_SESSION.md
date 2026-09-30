@@ -2,13 +2,16 @@
 
 ## Activation condition
 
-Step 2 is complete. Before starting Step 3, verify that the actual branch,
+Step 4 may start only after Step 3 is committed, pushed, and successful in the
+Pull Request workflow. Before any Step 4 change, verify that the actual branch,
 HEAD, remote, clean working tree, Pull Request, and latest required CI result
-agree with `docs/ci/CI_STATE.md`. Stop and investigate any mismatch.
+agree with `docs/ci/CI_STATE.md`. If Step 3 changes are still uncommitted or its
+remote check is pending or failed, finish or investigate Step 3 instead of
+starting Step 4.
 
 ## Step
 
-Step 3 — Define deterministic simulator boundaries
+Step 4 — Add normal telemetry and contract scenarios
 
 ## Read first
 
@@ -22,63 +25,62 @@ Step 3 — Define deterministic simulator boundaries
 Additional files relevant to this step:
 
 - `pyproject.toml`
-- `requirements/test.txt`
-- `src/tlm_device_data_platform/__init__.py`
-- `tests/test_package.py`
+- `src/tlm_device_data_platform/simulation.py`
+- `tests/test_simulation.py`
 - `.github/workflows/ci.yml`
 
 Do not read unrelated future files unless the current step requires them.
 
 ## Goal
 
-Define the smallest provider-independent boundaries for a deterministic fake
-sensor, controllable clock, transport, and temporary durable queue. Prove their
-deterministic behavior with unit tests without defining product telemetry,
-timing, capacity, credential, or authorization requirements.
+Add the smallest test-only telemetry contract needed to validate an accepted
+envelope, ordered test messages with `sequence_no` 1, 2, and 3, controlled
+malformed-envelope rejection, and controlled unsupported test schema-version
+rejection. Do not convert test fixtures into product requirements.
 
 ## Current verified starting point
 
-- The project currently contains only the package boundary and one
-  installed-package test; no application or simulator abstractions exist.
-- Python 3.11 and the locked pytest environment are established.
-- Pull Request workflow `CI / Python 3.11` reproduces the mandatory Python
-  checks and has a successful GitHub run.
-- No physical hardware, API, database, Docker, Supabase, secrets, or production
-  service is available or required.
-- Product telemetry fields, rates, retention, buffer limits, and command
-  authority remain open decisions.
+- Step 3 defines provider-independent sensor, clock, transport, and durable
+  queue protocols.
+- Deterministic test implementations control readings, time, delivery results,
+  and temporary queue state.
+- Messages at transport and queue boundaries are opaque `bytes`; no product
+  telemetry fields or envelope have been defined.
+- Python 3.11, the locked pytest environment, and Pull Request workflow are
+  established.
+- Product telemetry fields, rates, credentials, retention, buffer limits, and
+  authorization semantics remain open decisions.
 
 ## Allowed scope
 
-- Minimal interfaces or protocols for fake sensor, clock, transport, and
-  temporary durable queue boundaries.
-- Deterministic in-memory or temporary-filesystem test implementations.
-- Explicitly labeled test fixtures and test configuration.
-- Unit tests that prove deterministic control of time, readings, delivery
-  success/failure, queue persistence behavior, and ordering only to the extent
-  needed to validate the boundaries.
-- Dependency and CI handoff updates required by this step.
+- An explicitly labeled test fixture/test configuration telemetry envelope.
+- Deterministic serialization and validation sufficient for Step 4 tests.
+- Ordered normal test messages with `sequence_no` 1, 2, and 3.
+- Controlled errors for malformed test envelopes and unsupported test schema
+  versions.
+- Unit tests and CI handoff updates required by this step.
 
 ## Out of scope
 
-- Product telemetry envelope or field definitions; those belong to Step 4.
-- Duplicate, reconnect, replay, late-data, reboot, or stream semantics from
-  Steps 5 and 6.
-- API implementation, HTTP integration, Supabase, PostgreSQL, Docker, or
-  schema work.
-- Production credentials, authorization roles, retention guarantees, buffer
-  limits, sampling/reporting rates, or remote-command behavior.
+- Treating fixture field names, values, or schema versions as confirmed
+  product requirements.
+- Duplicate-idempotency, unavailable transport, durable replay, reconnect, or
+  buffered-burst behavior from Step 5.
+- Out-of-order current-state, stream restart, late-data, or clock-skew behavior
+  from Step 6.
+- API, HTTP, Supabase, PostgreSQL, Docker, production credentials,
+  authorization, retention guarantees, capacity limits, or remote commands.
 - Hardware-in-the-Loop, deployment, coverage thresholds, caching, lint, or
   type-check additions.
 
 ## Required investigation
 
 - Reconfirm repository, Pull Request, and CI state before changes.
-- Inspect the current minimal package and test structure.
-- Choose the smallest boundaries that support later deterministic scenarios
-  without prematurely implementing those scenarios.
-- Keep temporary values explicitly named as test fixtures or test
-  configuration, never as product defaults or requirements.
+- Reuse the Step 3 boundaries without broadening their provider-independent
+  contracts unnecessarily.
+- Separate fixture schema choices visibly from confirmed product semantics.
+- Do not infer acceptance, authorization, storage, retry, or current-state
+  behavior beyond the Step 4 goal.
 
 ## Validation
 
@@ -87,15 +89,13 @@ Recreate or reuse the isolated environment and run:
 - `.venv/bin/python -m pip check`
 - `.venv/bin/python -m pytest`
 
-Also verify deterministic repeatability, installed-package imports, no
-production-service or hardware dependency, and `git diff --check`. After
-approved commit and push, verify the updated Pull Request workflow.
-
-Expected result: boundary tests pass repeatedly with no wall-clock timing,
-network, hardware, Docker, Supabase, secret, or production dependency.
+Also verify deterministic repeatability, installed-package imports, controlled
+error behavior, no production-service or hardware dependency, and
+`git diff --check`. After approved commit and push, verify the updated Pull
+Request workflow.
 
 ## Stop condition
 
-After Step 3 implementation, validation, state update, approved commit/push,
-and successful Pull Request workflow verification. Do not start Step 4 in the
+After Step 4 implementation, validation, state update, approved commit/push,
+and successful Pull Request workflow verification. Do not start Step 5 in the
 same session.

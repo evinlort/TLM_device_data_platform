@@ -594,3 +594,246 @@ source change
 Следующий Step 3 может добавлять deterministic simulator boundaries уже поверх
 работающей цепочки. Новые unit tests автоматически попадут в существующий
 `python -m pytest` и будут проверяться тем же PR workflow.
+
+---
+
+## Step 3 — Детерминированные границы симулятора
+
+### Короткий итог
+
+Step 3 добавил четыре минимальные provider-independent границы: `Sensor`,
+`Clock`, `Transport` и `DurableQueue`. Для них появились управляемые тестами
+реализации `SequenceSensor`, `ManualClock`, `ScriptedTransport` и
+`TemporaryFileQueue`. Четыре новых unit tests доказывают повторяемость readings,
+времени, результатов delivery и FIFO-состояния временной файловой очереди.
+
+Шаг не определяет telemetry envelope и не моделирует retry, reconnect или
+replay. На этой стадии сообщение остаётся непрозрачным `bytes`, а reading —
+generic Python-значением. Благодаря этому CI получает необходимые точки
+подмены, не превращая временные fixture-значения в продуктовые требования.
+
+### Почему этот шаг был нужен
+
+После Step 2 проект уже умел воспроизводимо устанавливаться и автоматически
+запускать pytest в Pull Request. Однако единственный тест проверял только
+package boundary. Для будущих device scenarios нельзя обращаться напрямую к
+реальному датчику, системным часам, сети или production storage: такие тесты
+были бы недетерминированными и не могли бы надёжно выполняться на чистом
+GitHub-hosted runner.
+
+При этом сразу создавать полноценный device simulator также было рано.
+Product Management ещё не подтвердил поля telemetry, sampling rate, transport,
+credentials, buffer capacity, retention, retry или authorization semantics.
+Поэтому Step 3 отделяет изменчивые внешние зависимости от будущей логики, но не
+решает за продукт, какие данные и политики должны существовать.
+
+### Исходное состояние
+
+В начале шага существовали:
+
+- устанавливаемый Python 3.11 package;
+- pinned pytest environment;
+- один installed-package test;
+- Pull Request workflow `CI / Python 3.11` с успешным запуском;
+- решения о hardware-independent CI и provider-independent device boundary.
+
+Не существовали sensor, clock, transport, queue или simulator abstractions.
+Физического устройства, API, базы данных, Docker и Supabase для обязательных
+проверок не требовалось и не было.
+
+Перед изменениями реальное состояние было сверено с handoff: ветка
+`ci/github-actions-foundation`, HEAD `67ddea7`, чистое рабочее дерево, `origin`,
+открытый mergeable PR #1 и успешный `CI / Python 3.11` совпадали с
+`CI_STATE.md`.
+
+### Что было добавлено
+
+#### Структурные границы
+
+В `src/tlm_device_data_platform/simulation.py` определены четыре `Protocol`:
+
+- `Sensor[ReadingT_co].read()` возвращает одно generic reading;
+- `Clock.now()` возвращает контролируемый `datetime`;
+- `Transport.send(message: bytes)` выполняет delivery attempt и возвращает
+  только его результат `bool`;
+- `DurableQueue` предоставляет `enqueue`, `peek`, `dequeue` и длину FIFO.
+
+`Protocol` задаёт требуемую форму dependency без наследования от конкретного
+provider class. Будущая production или integration реализация сможет
+соответствовать границе структурно. `Sensor` не называет ни одного telemetry
+field, а transport и queue видят только уже сериализованные bytes.
+
+`bool` у `Transport` означает лишь test delivery outcome. Он не определяет HTTP
+status mapping, acknowledgement protocol, retry policy или продуктовый смысл
+успеха.
+
+#### Управляемые test implementations
+
+`SequenceSensor` получает `test_readings` и возвращает их строго по очереди.
+После исчерпания fixture он выбрасывает `FixtureExhaustedError`, поэтому
+случайный дополнительный read не маскируется повтором последнего значения.
+
+`ManualClock` начинается с явно переданного `test_start`. Повторный `now()` не
+двигает время. Изменение возможно только через `advance(test_delta)`, поэтому
+тест не зависит от скорости runner или wall clock.
+
+`ScriptedTransport` получает последовательность `test_results`. Каждый
+`send()` записывает opaque message в `attempts` и возвращает следующий заранее
+заданный результат. После исчерпания configuration также возникает
+`FixtureExhaustedError`. Никакого network call реализация не делает.
+
+`TemporaryFileQueue` сохраняет список сообщений в одном JSON-файле. Bytes
+кодируются base64, поэтому queue не интерпретирует payload. При изменении новый
+JSON сначала записывается во временный соседний файл, затем заменяет основной.
+Новый экземпляр с тем же `test_path` загружает прежнее состояние, что позволяет
+проверить минимальное значение слова durable для этого шага — состояние не
+зависит от жизни одного Python object.
+
+Это именно временная test implementation. Она не обещает production
+crash-safety, multi-process locking, retention, capacity или performance.
+
+#### Явные test fixtures
+
+В `tests/test_simulation.py` значения названы `TEST_READING_FIXTURES`,
+`TEST_START_TIME`, `TEST_TIME_ADVANCE`, `TEST_DELIVERY_RESULTS` и
+`TEST_MESSAGES`. Значения вроде `2042-01-02`, семи секунд и строк
+`test-message-a`/`test-message-b` существуют только для проверки механики. Они
+не являются telemetry schema, reporting interval или product default.
+
+### Полный поток Step 3
+
+Sensor flow:
+
+```text
+test configures finite readings
+  -> consumer calls Sensor.read()
+  -> SequenceSensor returns the next configured value
+  -> an unconfigured extra call fails explicitly
+```
+
+Clock flow:
+
+```text
+test supplies an exact datetime
+  -> repeated Clock.now() calls return the same value
+  -> test calls ManualClock.advance(delta)
+  -> Clock.now() returns exactly start + delta
+```
+
+Transport flow:
+
+```text
+test configures failure then success
+  -> send(opaque bytes) records the first attempt and returns False
+  -> send(opaque bytes) records the second attempt and returns True
+  -> no network or provider is contacted
+```
+
+Queue flow:
+
+```text
+first queue instance enqueues opaque messages into tmp_path
+  -> file stores base64 representations in FIFO order
+  -> second instance reads the same file and sees the oldest message
+  -> peek leaves it in place
+  -> dequeue persists its removal
+  -> third instance sees only the remaining message
+```
+
+Эти потоки пока намеренно не соединены в end-to-end retry loop. Их задача —
+доказать независимые границы, на которых следующие шаги смогут строить свои
+сценарии без обращения к hardware или production services.
+
+### Как это решает задачу
+
+Каждый источник недетерминизма теперь имеет маленькую заменяемую точку:
+
+- hardware reading заменяется конечной fixture sequence;
+- wall clock заменяется manual clock;
+- сеть заменяется scripted outcome sequence;
+- долговечность между объектами проверяется во временной filesystem queue.
+
+Результат одинаков на каждом запуске, потому что тест полностью задаёт входы и
+не ждёт реального времени. Opaque payload одновременно сохраняет правильное
+направление архитектуры: device boundary не знает Supabase URL, table names,
+PostgREST, Edge Functions или service-role credentials.
+
+### Что происходило во время реализации и как решались проблемы
+
+#### Нужно было не опередить Step 4
+
+Для sensor можно было сразу создать telemetry dataclass, а для transport —
+JSON envelope. Это было бы удобнее для конкретного сценария, но незаметно
+зафиксировало бы неподтверждённые поля и версии. Поэтому reading оставлен
+generic, а message — opaque bytes. Envelope и validation остаются отдельной
+задачей Step 4.
+
+#### Queue могла навязать будущую retry-модель
+
+Методы вроде `ack`, `retry`, `replay` или automatic reconnect не добавлялись.
+Минимальный FIFO содержит только enqueue, non-destructive peek и dequeue. Это
+достаточно для проверки границы хранения, но не утверждает, когда продукт
+обязан удалять сообщение или повторять delivery.
+
+#### Первая переустановка package не получила build dependency
+
+Первый запуск locked install выполнялся в restricted sandbox. PEP 517 build
+environment попытался получить закреплённый `setuptools==84.0.0`, но DNS/network
+access был запрещён. Ошибка произошла до сборки project и не указывала на
+дефект кода.
+
+После явного разрешения сетевого доступа была повторена та же команда без
+изменения dependencies или constraints. Wheel успешно собрался и установился.
+Таким образом, проблема была устранена как ограничение среды, а не обходом
+reproducibility contract.
+
+### Проверка и что она доказывает
+
+Использовался Python 3.11.9. Выполнены:
+
+```bash
+.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'
+.venv/bin/python -m pip check
+.venv/bin/python -m pytest -q
+```
+
+Результаты:
+
+- locked wheel build и install: PASS;
+- dependency consistency: PASS (`No broken requirements found`);
+- полный suite пять раз подряд: PASS (`5 passed` в каждом запуске);
+- import из `/tmp`: PASS, `simulation.py` загружен из установленного
+  `site-packages`, а не из source tree;
+- поиск запрещённых external dependencies: PASS;
+- `git diff --check`: PASS до handoff edits и повторяется на финальном diff.
+
+Четыре simulator tests отдельно доказывают:
+
+- readings возвращаются в точной fixture-последовательности;
+- время остаётся неподвижным без явного `advance`;
+- transport возвращает точно заданные failure/success и сохраняет attempts;
+- queue сохраняет FIFO-порядок и удаления между новыми instances.
+
+Повтор пяти запусков важен не как статистическая гарантия, а как простая
+проверка отсутствия зависимости от порядка, реального времени или случайности.
+Проверка import path подтверждает, что новые module/tests проходят через тот же
+installed-package boundary, который был установлен на Step 1.
+
+### Что сознательно осталось вне Step 3
+
+Не добавлялись:
+
+- product telemetry envelope, поля или schema version;
+- normal message contract scenarios Step 4;
+- duplicate, idempotency, retry, reconnect, replay или buffered burst Step 5;
+- out-of-order, stream restart, late-data или clock-skew semantics Step 6;
+- API, HTTP, Storage Adapter, Supabase, PostgreSQL или Docker;
+- credentials, roles, authorization или remote commands;
+- retention guarantee, queue capacity или overflow policy;
+- sampling/reporting rates;
+- Hardware-in-the-Loop;
+- новые dependencies, lint, type checking, caching или coverage threshold.
+
+Следующий Step 4 может использовать opaque transport/queue boundary и добавить
+явно test-only contract fixtures. Начинать его в этой сессии нельзя. Сначала
+Step 3 должен получить одобренный commit/push и успешный Pull Request workflow.

@@ -178,3 +178,38 @@ Consequences:
 Source:
 
 Direct user instruction after Step 2.
+
+## CI-DEC-007 — Opaque deterministic simulator boundaries
+
+Status: ACCEPTED
+
+Decision:
+
+Define simulator dependencies as four structural Python protocols: generic
+sensor readings, a controllable clock, transport of opaque serialized `bytes`,
+and a FIFO durable queue of the same opaque messages. Keep deterministic fake
+implementations in project code for CI use. Use a temporary-file queue only to
+prove persistence across instances; do not treat it as production storage.
+
+Reason:
+
+Later CI scenarios need replaceable hardware, time, delivery, and buffering
+boundaries now, while the product telemetry schema, transport provider,
+retention, capacity, retry, and authorization semantics are still undecided.
+Opaque and minimal contracts permit deterministic tests without silently
+deciding those product questions.
+
+Consequences:
+
+- Product telemetry fields remain outside the Step 3 interfaces.
+- Tests configure readings, time, outcomes, messages, and temporary paths
+  explicitly.
+- Future scenarios may compose these protocols but must not interpret the
+  temporary file implementation as a production durability guarantee.
+- Retry, acknowledgement, replay, duplicate, reconnect, and overflow policies
+  require their own later steps or confirmed Product decisions.
+
+Source:
+
+Step 3 simulator-boundary implementation and the existing
+`CI-DEC-001`/`CI-DEC-002` constraints.
