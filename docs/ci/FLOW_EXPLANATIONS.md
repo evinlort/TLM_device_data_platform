@@ -854,3 +854,250 @@ GitHub-hosted runner успешно прошли checkout, Python setup, locked 
 После этого `CI_PLAN.md` и `CI_STATE.md` переведены из промежуточного
 `READY_FOR_COMMIT` в окончательный `DONE`. Step 4 остаётся задачей новой сессии;
 никакой его implementation в рамках Step 3 не выполнялся.
+
+---
+
+## Step 4 — Нормальная telemetry и contract-сценарии
+
+### Короткий итог
+
+Step 4 добавил минимальный versioned telemetry contract исключительно для CI
+fixtures. Три нормальных сообщения с `sequence_no` 1, 2 и 3 детерминированно
+сериализуются в JSON `bytes`, проходят через существующий
+`ScriptedTransport`, затем разбираются обратно в исходные fixture envelopes.
+Malformed input и неподдерживаемая fixture schema version отклоняются
+контролируемыми и различимыми exception types.
+
+Ни имя поля, ни его значение, ни fixture schema version `1` не считаются
+подтверждённым продуктовым требованием. Модуль называется
+`telemetry_fixture.py`, API использует слово `Fixture`, а module/class
+docstrings прямо фиксируют временный test-only статус этого контракта.
+
+### Почему этот шаг был нужен
+
+Step 3 создал управляемые границы sensor, clock, transport и queue, но
+намеренно оставил сообщения непрозрачными `bytes`. Этого было достаточно для
+проверки независимых механизмов, однако нельзя было проверить нормальную
+последовательность telemetry или контролируемую реакцию на неверный contract:
+не существовало даже тестового формата, который можно принять или отклонить.
+
+Одновременно product telemetry schema всё ещё не подтверждена. Если бы Step 4
+назвал временный JSON production envelope, CI начал бы закреплять решения о
+полях, версиях и правилах приёма без Product Manager. Поэтому задача решена
+через отдельный fixture contract: он стабилен для тестов и достаточно строг,
+чтобы доказывать contract behavior, но явно не претендует на продуктовый API.
+
+### Исходное состояние
+
+Перед изменениями были сверены локальное и удалённое состояния:
+
+- ветка `ci/github-actions-foundation` и HEAD `959d08e`;
+- чистое рабочее дерево;
+- `origin` указывает на ожидаемый private GitHub repository;
+- PR #1 открыт, mergeable и указывает на тот же HEAD;
+- `CI / Python 3.11` для фактического remote HEAD завершён успешно;
+- Step 3 implementation commit и его успешный run присутствуют в истории.
+
+Более новый commit `959d08e` только добавлял в план будущий Step 4.5 для test
+artifacts и не изменял завершённое состояние Step 3. Поэтому он не создавал
+конфликта с activation condition Step 4.
+
+До Step 4 transport принимал только opaque `bytes`, а проект не содержал
+telemetry serializer, parser, schema version или contract errors. Поля
+production telemetry, rates, credentials, authorization, retention и storage
+semantics оставались открытыми решениями.
+
+### Что было добавлено
+
+#### Отдельный fixture module
+
+`src/tlm_device_data_platform/telemetry_fixture.py` содержит fixture schema
+version `1` и `TelemetryFixtureEnvelope` с полями:
+
+- `schema_version`;
+- `message_id`;
+- `stream_id`;
+- `sequence_no`;
+- `recorded_at`;
+- `payload`.
+
+Этот список выбран только как test configuration, достаточная для текущего и
+запланированных deterministic scenarios. Он не утверждает, что production
+device обязан отправлять эти поля, использовать JSON или версию `1`.
+
+`serialize_fixture_telemetry()` сначала проверяет exact fixture shape, затем
+создаёт UTF-8 JSON `bytes`. `sort_keys=True` и compact separators дают один и
+тот же byte sequence для одинакового envelope. `allow_nan=False` не позволяет
+незаметно породить нестандартные JSON values `NaN` или `Infinity`.
+
+`parse_fixture_telemetry()` принимает тот же opaque `bytes` boundary,
+декодирует только UTF-8 JSON, требует object с точным набором fixture fields и
+проверяет минимальные типы. Parser не интерпретирует timestamp, payload value
+или product meaning полей.
+
+#### Контролируемые ошибки
+
+Ошибки разделены на две категории:
+
+- `MalformedTelemetryFixtureError` означает, что input не является допустимым
+  fixture envelope: это может быть неверный JSON, не-object, отсутствующий или
+  лишний field либо неверный fixture field type;
+- `UnsupportedFixtureSchemaVersionError` означает, что shape и тип version
+  распознаны, но test fixture version не поддерживается.
+
+Обе ошибки наследуют `TelemetryFixtureError`, поэтому consumer при
+необходимости может обработать общий fixture failure. Раздельные subclasses
+позволяют тесту доказать, что unsupported version не маскируется под случайную
+ошибку JSON parser.
+
+#### Normal ordered scenario
+
+`tests/test_telemetry_fixture.py` объявляет значения через `TEST_*` constants
+и создаёт три envelopes. Их `message_id`, `stream_id`, `recorded_at`, payload и
+числовые readings — только test fixtures.
+
+Тест сериализует envelopes, передаёт каждый message через уже существующий
+`ScriptedTransport` с тремя заранее настроенными успешными результатами и
+разбирает записанные `attempts`. Он проверяет одновременно:
+
+- все три configured delivery attempts успешны;
+- после round trip envelopes не изменились;
+- наблюдаемый порядок `sequence_no` равен `(1, 2, 3)`.
+
+`Transport.send(message: bytes) -> bool` не расширялся и не узнал ничего о
+JSON. Таким образом, Step 4 использует Step 3 boundary, не связывая transport с
+fixture или будущей production schema.
+
+Дополнительные tests доказывают стабильность повторной сериализации,
+round-trip parsing, controlled rejection неверного JSON, не-object input,
+неполного envelope, неверного типа `sequence_no` и отдельно unsupported
+fixture version.
+
+### Полный поток Step 4
+
+Normal flow:
+
+```text
+test creates three TelemetryFixtureEnvelope values
+  -> serialize_fixture_telemetry validates fixture-only shape
+  -> deterministic JSON encoder produces opaque bytes
+  -> ScriptedTransport records bytes and returns configured True
+  -> parse_fixture_telemetry validates recorded bytes
+  -> test observes sequence_no 1, 2, 3 in original order
+```
+
+Malformed flow:
+
+```text
+test supplies invalid JSON, wrong top-level type, incomplete shape,
+or invalid field type
+  -> parse_fixture_telemetry rejects the fixture input
+  -> MalformedTelemetryFixtureError identifies a controlled contract failure
+```
+
+Unsupported-version flow:
+
+```text
+test supplies an otherwise shaped fixture with schema_version 999
+  -> parser recognizes the integer version
+  -> version differs from fixture version 1
+  -> UnsupportedFixtureSchemaVersionError reports the exact test version
+```
+
+Ни один поток не обращается к hardware, wall clock, network, API, database,
+Supabase, Docker, secret или production service.
+
+### Как это решает задачу
+
+Теперь CI может отличить три принципиально разных результата: normal fixture
+message принят parser, malformed fixture отклонён как malformed, а корректно
+представленная, но неизвестная fixture version отклонена как unsupported.
+Порядок 1, 2, 3 подтверждается на реальном serialized `bytes` boundary, а не
+только на списке Python objects.
+
+При этом архитектурная граница Step 3 сохранена. Contract logic находится
+перед transport и после него, а сам transport остаётся provider-independent.
+Такой composition позволяет позже строить новые deterministic scenarios, не
+добавляя Supabase details в device boundary.
+
+Явная fixture terminology решает второй риск: читатель и следующая Codex
+сессия видят, что текущая схема существует ради CI. Для превращения любого её
+элемента в production contract по-прежнему понадобится отдельное
+подтверждённое продуктовое решение.
+
+### Что происходило во время реализации и как решались проблемы
+
+#### Первый pytest увидел прежний установленный wheel
+
+Проект использует `src/` layout и pytest `importlib` mode, поэтому tests
+импортируют установленный distribution. Сразу после создания нового module
+`.venv` всё ещё содержал wheel Step 3. Collection остановился с
+`ModuleNotFoundError` для `telemetry_fixture`.
+
+Это было ожидаемым доказательством installed-package boundary, а не поводом
+добавлять source tree в `PYTHONPATH`. Текущий project был переустановлен
+канонической locked command, после чего import стал разрешаться из
+`site-packages`.
+
+#### Restricted sandbox не мог скачать build dependency
+
+Первая locked reinstall попытка дошла до isolated PEP 517 build environment,
+но sandbox не разрешал DNS/network access для получения закреплённого
+`setuptools==84.0.0`. Команда была повторена после явного разрешения сетевого
+доступа, без изменения dependency versions или installation flow. Wheel был
+успешно собран и установлен.
+
+#### Нужно было не превратить validation в product policy
+
+Parser проверяет только техническую форму fixture: exact fields, базовые
+типы, supported test version и стандартный finite-value JSON. Он намеренно не
+проверяет business ranges, timestamp freshness, identity, authorization,
+storage acceptance, duplicate policy или ordering across streams. Эти правила
+не подтверждены либо относятся к будущим шагам.
+
+### Проверка и что она доказывает
+
+На Python 3.11.9 выполнены:
+
+```bash
+.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'
+.venv/bin/python -m pip check
+.venv/bin/python -m pytest -q
+```
+
+Результаты:
+
+- locked wheel build и reinstall: PASS;
+- dependency consistency: PASS (`No broken requirements found`);
+- полный suite пять раз подряд: PASS (`12 passed` в каждом запуске);
+- import из `/tmp`: PASS, `telemetry_fixture.py` загружен из установленного
+  `site-packages`;
+- controlled malformed/version errors: PASS через dedicated tests;
+- forbidden external-dependency scan по `src` и `tests`: PASS;
+- `git diff --check`: PASS до handoff update и повторяется для final diff.
+
+Пять одинаковых прогонов подтверждают, что новые scenarios не зависят от test
+order, wall clock или случайности. Installed import доказывает, что новый
+module попал в собираемый distribution. Отдельные exception assertions
+доказывают не просто факт отказа, а ожидаемый и контролируемый вид отказа.
+
+### Что сознательно осталось вне Step 4
+
+Step 4 не добавлял:
+
+- production telemetry schema или подтверждение fixture fields;
+- duplicate/idempotency behavior;
+- unavailable transport, queue retention, retry, reconnect или replay;
+- buffered burst;
+- out-of-order current state, stream restart, late data или clock skew;
+- API, HTTP, Storage Adapter, Supabase, PostgreSQL или Docker;
+- credentials, identity, roles, authorization или remote commands;
+- retention, capacity, overflow, sampling rate или reporting rate;
+- JUnit/log artifacts, которые выделены в следующий Step 4.5;
+- новые dependencies, caching, lint, type checking или coverage threshold;
+- Hardware-in-the-Loop, deployment, branch protection или merge PR.
+
+После локальной валидации Step 4 имеет статус `READY_FOR_COMMIT`. Для
+завершения всё ещё нужны явное разрешение пользователя на commit/push и
+успешный `CI / Python 3.11` для отправленного HEAD. Step 4.5 нельзя начинать в
+этой сессии.

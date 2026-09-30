@@ -213,3 +213,42 @@ Source:
 
 Step 3 simulator-boundary implementation and the existing
 `CI-DEC-001`/`CI-DEC-002` constraints.
+
+## CI-DEC-008 — Explicitly test-only telemetry fixture contract
+
+Status: ACCEPTED
+
+Decision:
+
+Use a versioned JSON envelope only as a deterministic CI fixture contract.
+The fixture contains `schema_version`, `message_id`, `stream_id`,
+`sequence_no`, `recorded_at`, and `payload`, and fixture schema version `1` is
+the only supported test version. Serialize it deterministically to UTF-8
+`bytes`, validate its exact test shape, and report malformed data separately
+from unsupported fixture versions. Do not change the provider-independent
+transport boundary, which continues to carry opaque `bytes`.
+
+Reason:
+
+Step 4 needs stable normal, malformed, and version-rejection scenarios while
+Product Management has not confirmed the production telemetry envelope or its
+field semantics. An unmistakably fixture-specific contract permits meaningful
+CI coverage without presenting temporary test choices as product decisions.
+
+Consequences:
+
+- Every field name, value, type rule, and schema version in
+  `telemetry_fixture.py` remains test configuration rather than a production
+  requirement.
+- A future production contract requires separate confirmed requirements; it
+  must not silently adopt this fixture schema.
+- Later deterministic CI scenarios may compose the fixture fields, but doing
+  so does not define production acceptance, authorization, storage, retry,
+  idempotency, ordering, or current-state policy.
+- No JSON, schema, or validation concern leaks into the existing `Transport`
+  or `DurableQueue` protocols.
+
+Source:
+
+Step 4 telemetry-fixture implementation and the open Product decisions
+recorded in `CI_PLAN.md`.
