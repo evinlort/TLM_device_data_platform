@@ -2498,3 +2498,46 @@ artifact.
 нужно зафиксировать и отправить изменения, дождаться required workflow,
 скачать его artifact, сверить digest, JUnit и log, затем завершить handoff. До
 этого Step 7 не получает статус `DONE`, а Step 8 не начинается.
+
+### Удалённая проверка и завершение шага
+
+После явного разрешения пользователя реализация, tests и подготовленный handoff
+были зафиксированы commit
+`922ea764909e60ce9de828d557298d66a32e09b6`
+(`test: add local API storage integration boundary`) и отправлены в
+`ci/github-actions-foundation`.
+
+Push запустил GitHub Actions workflow `CI`, run ID `36746384665`, run number
+`15`. Job `Python 3.11` завершился с conclusion `success`. Все его steps —
+checkout, Python setup, locked install, `pip check`, pytest, result-file
+validation и artifact upload — получили согласованные статусы
+`completed/success`.
+
+GitHub показал информационное предупреждение о будущей миграции label
+`ubuntu-latest` на Ubuntu 26 с 19 октября 2026 года. Оно не повлияло на run #15
+и не меняет scope Step 7. Изменение runner image следует оценивать отдельно по
+фактическим CI результатам.
+
+Run опубликовал artifact `pytest-results-python-3.11`, ID `11111973801`,
+размером `1487` archive bytes. Artifact был скачан во временный каталог.
+SHA-256 скачанного ZIP
+`b15231921bf2d820d9965715ca678c283f370d565563d0afc8cc0e34ad696d70`
+точно совпал с GitHub digest. `unzip -t` подтвердил целостность архива.
+
+Внутри находились ровно два ожидаемых непустых файла:
+
+- `pytest.xml` — `3481` bytes, `22` tests, `0` failures, `0` errors,
+  `0` skipped;
+- `pytest.log` — `961` bytes и итог `22 passed`.
+
+Удалённая проверка особенно важна для Step 7: в restricted локальном sandbox
+loopback socket требовал отдельного разрешения, а clean GitHub-hosted runner
+выполнил real HTTP tests без специальной настройки. Это подтверждает, что
+required CI действительно может поднять локальный WSGI server, пройти через
+queue, HTTP, API и filesystem storage и завершиться детерминированно без
+внешнего service, Docker, secret, Supabase или production dependency.
+
+После successful run и artifact inspection `CI_PLAN.md` и `CI_STATE.md`
+переведены в `DONE`. Следующим остаётся Step 8 — Supabase schema bootstrap
+strategy. Его реализация в этой сессии не начиналась и должна стартовать только
+в новой сессии через `docs/ci/BOOTSTRAP_PROMPT.md`.

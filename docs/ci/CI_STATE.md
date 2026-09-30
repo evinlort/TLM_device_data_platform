@@ -3,8 +3,11 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Current committed HEAD before Step 7:
-  `5a1d90c61ef7f52bf3ff35650139ddaf9cf039cf`.
+- Step 7 implementation commit:
+  `922ea764909e60ce9de828d557298d66a32e09b6`.
+- The commit containing this file finalizes the Step 7 handoff; use
+  `git rev-parse HEAD` for its exact SHA without creating a self-referential
+  state update.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: public `evinlort/TLM_device_data_platform` with `main` as
@@ -12,24 +15,23 @@
   is intentional.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open from `ci/github-actions-foundation` to `main`.
-- The latest pre-Step 7 Pull Request run is
-  [CI #14](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36731923102)
-  for HEAD `5a1d90c61ef7f52bf3ff35650139ddaf9cf039cf`; its `Python 3.11`
-  job completed successfully.
-- The run #14 artifact `pytest-results-python-3.11`, ID `11104568500`, was
+- GitHub Actions
+  [CI #15](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36746384665)
+  completed successfully for the Step 7 implementation commit. Its
+  `Python 3.11` job completed locked installation, dependency checking,
+  pytest, result-file validation, and artifact upload successfully.
+- The Step 7 artifact `pytest-results-python-3.11`, ID `11111973801`, was
   downloaded and inspected. Its GitHub digest and downloaded ZIP SHA-256 both
   equal
-  `89b5f057df85ce601018842e4ecba87a77e09e29d1f3392903c18f5275bd49db`.
-- Working tree: contains the uncommitted, locally validated Step 7
-  implementation and handoff described below.
+  `b15231921bf2d820d9965715ca678c283f370d565563d0afc8cc0e34ad696d70`.
+- Working tree: expected to be clean after the approved final Step 7 handoff
+  commit.
 
 ## Current milestone
 
 - Step: Step 7 — Establish the local API/storage integration boundary.
-- Status: READY_FOR_COMMIT.
-- Local implementation and validation: complete.
-- Completion blockers: explicit user approval for commit/push, followed by a
-  successful Pull Request workflow and inspection of its published artifact.
+- Status: DONE.
+- Completion blockers: none.
 
 ## Verified facts
 
@@ -105,7 +107,20 @@ tests. The targeted loopback suite also passed once and then five repeated
 runs outside the socket-restricted sandbox. No external host was contacted by
 the tests.
 
-Remote Step 7 validation is intentionally pending commit approval and push.
+Remote Step 7 validation:
+
+- Workflow: `CI`, run ID `36746384665`, run number `15`.
+- Commit: `922ea764909e60ce9de828d557298d66a32e09b6`.
+- Job: `Python 3.11`; every job step completed with conclusion `success`.
+- Artifact: `pytest-results-python-3.11`, ID `11111973801`, `1487` archive
+  bytes, not expired when inspected.
+- The GitHub-reported and downloaded ZIP SHA-256 both equal
+  `b15231921bf2d820d9965715ca678c283f370d565563d0afc8cc0e34ad696d70`.
+- The downloaded ZIP passed archive integrity validation and contained exactly
+  the expected non-empty `pytest.xml` (`3481` bytes) and `pytest.log` (`961`
+  bytes).
+- Downloaded JUnit XML: `22` tests, `0` failures, `0` errors, `0` skipped.
+- Downloaded pytest log: PASS; it contains the `22 passed` summary.
 
 ## Current CI
 
@@ -166,9 +181,8 @@ not require changes.
 ## Next step
 
 - Step: Step 8 — Define the Supabase schema bootstrap strategy.
-- Do not start Step 8 until Step 7 is committed, pushed, successful in the
-  Pull Request workflow, and its published artifact has been downloaded and
-  inspected.
+- Step 7 is committed, pushed, successful in the Pull Request workflow, and
+  its published artifact has been downloaded and inspected.
 - Step 8 must start in a new Codex session.
 
 Use `docs/ci/BOOTSTRAP_PROMPT.md` for that new session. Do not start Step 8 in
