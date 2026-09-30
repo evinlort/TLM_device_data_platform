@@ -252,3 +252,44 @@ Source:
 
 Step 4 telemetry-fixture implementation and the open Product decisions
 recorded in `CI_PLAN.md`.
+
+## CI-DEC-009 — Explicit test-only queued-delivery orchestration
+
+Status: ACCEPTED
+
+Decision:
+
+Use `flush_test_queue()` only as deterministic CI orchestration over the
+existing opaque `DurableQueue` and `Transport` boundaries. One explicit call
+attempts queued messages in FIFO order, removes a message only after the
+configured transport returns `True`, and stops at the first configured
+`False` while leaving that message queued. Tests model reconnect with a new
+transport and another explicit call. For the duplicate fixture scenario only,
+logical acceptance means retaining the first parsed fixture envelope for each
+fixture `message_id`.
+
+Reason:
+
+Step 5 must prove duplicate, unavailable-transport, reconnect, and replay
+behavior without inventing product retry timing, acknowledgement, storage,
+retention, capacity, or overflow semantics. Keeping orchestration explicit and
+fixture-named makes the test flow deterministic while preserving the existing
+provider-independent opaque-message boundary.
+
+Consequences:
+
+- `flush_test_queue()` is not a production retry loop or acknowledgement
+  protocol and performs no automatic retry, waiting, backoff, or reconnect.
+- The fixture `message_id` acceptance rule proves only logical idempotency in
+  the Step 5 test; it does not define a production unique key, database
+  constraint, storage result, or transport acknowledgement.
+- `TEST_CORRECTNESS_BURST_SIZE = 64` is test configuration for ordered replay,
+  not a product buffer size, capacity, performance target, scale claim, or
+  SLO.
+- Production offline guarantees and delivery policy remain open Product
+  decisions.
+
+Source:
+
+Step 5 deterministic delivery-scenario implementation and the existing
+`CI-DEC-001`, `CI-DEC-002`, `CI-DEC-007`, and `CI-DEC-008` constraints.

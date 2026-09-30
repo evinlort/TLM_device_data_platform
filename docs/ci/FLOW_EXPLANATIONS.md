@@ -1428,3 +1428,373 @@ validation, загружаются официальным action, появляю
 После успешного run и inspection `CI_PLAN.md` и `CI_STATE.md` переведены из
 `READY_FOR_COMMIT` в `DONE`. Следующим шагом остаётся Step 5; никакая его
 реализация в рамках Step 4.5 не выполнялась.
+
+---
+
+## Step 5 — Duplicate, offline и reconnect-сценарии
+
+### Короткий итог
+
+Step 5 соединил уже существующие opaque transport и temporary durable queue в
+минимальный детерминированный test flow. Новая функция `flush_test_queue()`
+пытается передать FIFO-head, удаляет его только после настроенного результата
+`True` и останавливается на первом `False`, оставляя неотправленное сообщение в
+очереди. Reconnect моделируется не скрытой автоматикой, а новым
+`ScriptedTransport` и отдельным явным вызовом функции.
+
+Четыре новых сценария доказывают:
+
+- две попытки с одним fixture `message_id` дают одну логическую test
+  acceptance;
+- недоступный transport не удаляет сообщения из test queue;
+- после reconnect сохранённые сообщения воспроизводятся в порядке FIFO;
+- тот же порядок сохраняется для correctness burst из `64` fixture messages.
+
+Число `64`, поля envelope, правило принятия по `message_id` и результат
+transport остаются test configuration. Шаг не определяет production retry,
+acknowledgement, storage, retention, capacity, overflow или SLO.
+
+### Почему этот шаг был нужен
+
+После Step 4 существовал test-only telemetry envelope, а после Step 3 —
+отдельные детерминированные transport и queue boundaries. Однако независимые
+тесты границ ещё не доказывали составное поведение при повторной попытке,
+недоступности transport или восстановлении связи.
+
+Без Step 5 оставались непроверенными важные технические свойства будущего CI
+потока:
+
+1. повтор одного логического fixture message не должен создавать два
+   логических принятия внутри тестового сценария;
+2. `False` от configured transport не должен приводить к удалению queue head;
+3. новый явный replay после reconnect должен сохранить FIFO order;
+4. механизм должен работать не только для трёх сообщений, но и для более
+   заметной deterministic sequence без заявления о production scale.
+
+Реализовывать настоящий retry loop или storage adapter на этом шаге было бы
+преждевременно. Product Management ещё не подтвердил timeout, backoff,
+acknowledgement, offline guarantee, retention duration, maximum buffer size,
+overflow policy или production idempotency key. Поэтому Step 5 проверяет
+только явно названную fixture-механику.
+
+### Проверка состояния перед изменениями
+
+До редактирования были проверены:
+
+- ветка `ci/github-actions-foundation`;
+- локальный HEAD
+  `33b61371869a15bdf8480638e6d7eb8895784964`;
+- тот же SHA у `origin/ci/github-actions-foundation`;
+- remote URL
+  `https://github.com/evinlort/TLM_device_data_platform.git`;
+- открытый Pull Request #1;
+- успешный `CI` run #10, ID `36709494100`, для фактического starting HEAD;
+- успешный Step 4.5 run #9, ID `36708553100`;
+- наличие обоих artifacts в run listings;
+- повторно скачанный Step 4.5 artifact.
+
+SHA-256 повторно скачанного Step 4.5 ZIP равен
+`f2aa0cf4a9aaabe41d6f4308f9b2fe28fc9c308e8010b744ee3838bbf087639e`
+и совпадает с GitHub digest. `unzip -t` подтвердил целостность. Архив содержит
+ровно ожидаемые `pytest.xml` размером `2117` bytes и `pytest.log` размером
+`721` bytes. Log сообщает `12 passed`, а XML — `12` tests, `0` failures,
+`0` errors и `0` skipped.
+
+Во время сверки обнаружилось одно расхождение: `CI_STATE.md` называл repository
+private, а GitHub API сообщал `public`. Согласно bootstrap-инструкции работа
+была остановлена до расследования. Пользователь подтвердил, что публичность
+установлена намеренно. После этого актуальная visibility была записана в новый
+handoff, и Step 5 продолжился.
+
+### Минимальная orchestration boundary
+
+В `src/tlm_device_data_platform/simulation.py` добавлена одна функция:
+
+```python
+flush_test_queue(
+    test_queue: DurableQueue,
+    test_transport: Transport,
+) -> tuple[bytes, ...]
+```
+
+Она не знает `TelemetryFixtureEnvelope`, JSON, `message_id`, `stream_id` или
+`sequence_no`. Вход и выход остаются opaque `bytes`, поэтому существующая
+provider-independent boundary не изменилась.
+
+Один вызов выполняет только следующий детерминированный алгоритм:
+
+```text
+peek FIFO head
+  -> if queue is empty: stop
+  -> call configured Transport.send(head)
+  -> if result is False: stop without dequeue
+  -> if result is True: dequeue the same head
+  -> record this successful test attempt
+  -> continue with the next head
+```
+
+После successful result функция дополнительно проверяет, что `dequeue()`
+вернул именно ранее увиденный head. Если test queue неожиданно изменилась между
+`peek` и `dequeue`, deterministic flow завершается явной ошибкой вместо тихого
+удаления другого message.
+
+Название аргументов, docstring и поведение подчёркивают ограничение: это
+test-only orchestration. Функция не запускает background worker, не ждёт
+время, не повторяет `send()`, не создаёт transport, не обнаруживает reconnect и
+не рассчитывает backoff. Таким образом, одна короткая composition boundary
+достаточна для сценариев, но не притворяется production client.
+
+### Как определена логическая acceptance duplicate
+
+`Transport.send() -> bool` остаётся только configured delivery outcome. Step 5
+не переопределяет `True` как database commit или подтверждение production
+server. Поэтому logical acceptance определена локально внутри
+`tests/test_delivery_scenarios.py` функцией `_logical_fixture_acceptance()`.
+
+Для этого теста правило выглядит так:
+
+```text
+parse delivered fixture bytes
+  -> inspect fixture message_id
+  -> keep the first envelope for each message_id
+  -> ignore later occurrences of that same fixture message_id
+```
+
+Это правило существует только для доказательства требуемой логической
+idempotency. Оно не утверждает, что production обязан использовать это поле
+как database unique key, какой payload следует сохранить при конфликте или
+какой ответ должен получить device.
+
+### Добавленные test fixtures и scenarios
+
+Новый файл `tests/test_delivery_scenarios.py` использует только существующие
+test boundaries и новый explicit flush.
+
+`_test_envelope()` строит fixture envelopes с именами
+`test-step-5-message-*`, stream `test-step-5-stream` и test timestamp
+`2042-01-02T03:04:05Z`. Эти значения не являются production defaults.
+
+`_enqueue()` явно помещает переданные serialized bytes во временную файловую
+очередь. Каждый тест использует отдельный `tmp_path`, поэтому состояние не
+разделяется между test cases и не зависит от filesystem предыдущего запуска.
+
+#### Duplicate fixture retry
+
+`test_duplicate_message_id_retry_is_logically_accepted_once` дважды помещает
+в очередь одинаковые serialized bytes с `message_id` равным
+`test-duplicate-message`. `ScriptedTransport((True, True))` доказывает, что
+обе попытки действительно произошли. Затем fixture acceptance оставляет один
+envelope.
+
+Проверяются одновременно два разных факта:
+
+- transport attempts содержат duplicate дважды;
+- logical accepted result содержит его один раз.
+
+Queue после двух настроенных successful attempts пуста. Дедупликация не
+встроена в queue или transport и потому не меняет их общие contracts.
+
+#### Unavailable transport
+
+`test_unavailable_transport_retains_messages_in_test_queue` помещает два
+fixture messages и использует `ScriptedTransport((False,))`.
+
+Функция пытается передать только первый head, получает `False` и возвращает
+пустой набор successful attempts. Новый instance `TemporaryFileQueue` видит
+оба прежних messages и извлекает их в исходном FIFO order. Это доказывает
+удержание через границу Python object lifetime, не обещая production
+crash-safety или retention duration.
+
+#### Reconnect replay
+
+`test_reconnect_replays_persisted_messages_in_fifo_order` создаёт messages с
+fixture `sequence_no` 1, 2 и 3. Первый explicit flush получает `False` и
+ничего не удаляет. Затем test создаёт новый `ScriptedTransport` с тремя
+результатами `True` и новый queue instance для того же temporary path.
+
+Replay attempts в точности совпадают с исходными serialized bytes, parser
+наблюдает sequence `(1, 2, 3)`, а queue после успешного replay пуста. Новый
+transport и второй вызов явно обозначают reconnect; product reconnect detector
+не имитируется и не предполагается.
+
+#### Correctness-scale buffered burst
+
+`test_reconnect_replays_correctness_scale_buffered_burst` повторяет offline и
+reconnect flow для `TEST_CORRECTNESS_BURST_SIZE = 64`.
+
+После первого `False` новый queue instance содержит все `64` messages. После
+второго explicit flush:
+
+- replayed bytes полностью равны исходному tuple;
+- parsed `sequence_no` равны `1..64` без пропусков и перестановок;
+- temporary queue пуста.
+
+Размер `64` выбран как test fixture, достаточно большой для проверки цикла и
+FIFO порядка вне тривиальных трёх элементов. Тест не измеряет duration,
+throughput, memory или disk usage и поэтому не устанавливает capacity,
+performance target или SLO.
+
+### Полные потоки Step 5
+
+Duplicate flow:
+
+```text
+serialize one fixture envelope
+  -> enqueue identical bytes twice
+  -> explicit flush makes two configured successful attempts
+  -> test-only acceptance groups by fixture message_id
+  -> one logical fixture envelope remains
+```
+
+Offline flow:
+
+```text
+enqueue opaque fixture bytes
+  -> explicit flush peeks oldest message
+  -> configured transport returns False
+  -> flush stops without dequeue
+  -> new queue instance loads all original messages
+```
+
+Reconnect flow:
+
+```text
+offline flush leaves queue intact
+  -> test constructs a new configured successful transport
+  -> second explicit flush reads the same temporary queue
+  -> each successful head is removed in FIFO order
+  -> parsed fixture sequence remains ordered
+  -> queue becomes empty
+```
+
+Burst flow:
+
+```text
+serialize and enqueue fixture sequence 1..64
+  -> unavailable attempt preserves all 64 messages
+  -> explicit reconnect replays all opaque bytes
+  -> byte equality and parsed sequence equality both pass
+  -> no performance or capacity conclusion is drawn
+```
+
+Ни один поток не использует hardware, sleep, wall clock, random input, API,
+HTTP, production network, database, Supabase, PostgreSQL, Docker, secret или
+credential.
+
+### Что происходило во время реализации и как решались проблемы
+
+#### Repository visibility не совпала с handoff
+
+Bootstrap запрещал менять файлы при расхождении actual state и `CI_STATE.md`.
+GitHub connector дважды подтвердил public visibility, тогда как handoff
+говорил private. Работа была остановлена, evidence сообщён пользователю, и
+только после подтверждения намеренной публичности implementation продолжился.
+Это не потребовало изменения GitHub settings; исправлена только factual запись
+в handoff.
+
+#### Нельзя было превратить `False` и `True` в product protocol
+
+Самый удобный API мог называться retry/ack worker и автоматически ждать
+reconnect. Такой API незаметно определил бы product policy. Вместо него выбран
+один synchronous explicit flush. Его docstring прямо говорит, что configured
+success и removal имеют смысл только внутри deterministic test scenario.
+
+#### Duplicate acceptance могла стать ложной storage specification
+
+Дедупликация не добавлялась в `TemporaryFileQueue`, `ScriptedTransport` или
+общий source module. Она находится в private test helper и использует
+fixture-only `message_id`. Поэтому тест доказывает требуемый логический
+результат, но не навязывает будущему Storage Adapter database schema.
+
+#### Первый locked reinstall не получил build dependency
+
+Первый запуск команды
+
+```bash
+.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'
+```
+
+в restricted sandbox не смог разрешить DNS для получения закреплённого
+`setuptools==84.0.0` в isolated PEP 517 environment. Ошибка возникла до build
+и не относилась к Step 5 code.
+
+Та же команда была повторена после явного разрешения network access. Никакие
+dependency versions, constraints или build settings не менялись. Wheel
+собрался и установился успешно.
+
+#### Installed-package boundary требовал reinstall
+
+Проект по-прежнему использует `src/` layout и pytest `importlib` mode. Поэтому
+финальная проверка выполнялась после rebuild/reinstall wheel, а не через
+добавление source directory в `PYTHONPATH`. Дополнительный import из `/tmp`
+показал путь `.venv/lib/python3.11/site-packages/.../simulation.py`.
+
+#### Existing artifact flow не потребовал изменения
+
+Новые test cases автоматически попали в прежнюю `python -m pytest` command.
+Workflow уже создаёт JUnit XML и readable log, проверяет оба файла и загружает
+artifact. Поэтому `.github/workflows/ci.yml` не редактировался: Step 5 не
+обнаружил дефекта в завершённом Step 4.5 flow.
+
+### Проверка и что она доказывает
+
+После финального reinstall на Python 3.11.9 выполнены:
+
+```bash
+.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'
+.venv/bin/python -m pip check
+.venv/bin/python -m pytest --junitxml=test-results/pytest.xml
+```
+
+Результаты:
+
+- locked wheel build и reinstall: PASS;
+- dependency consistency: PASS (`No broken requirements found`);
+- полный suite: PASS (`16 passed`);
+- pytest exit status: `0`;
+- JUnit XML: `16` tests, `0` failures, `0` errors, `0` skipped;
+- `pytest.xml` и `pytest.log`: существуют и непусты;
+- Step 5 scenario suite пять раз подряд: PASS (`4 passed` каждый раз);
+- installed-package import из `/tmp`: PASS;
+- forbidden hardware/production dependency scan: PASS;
+- workflow по-прежнему содержит оба result paths, два `always()` conditions и
+  `if-no-files-found: error`;
+- `git diff --check`: PASS.
+
+Пять повторных прогонов не являются статистическим performance test. Они
+проверяют отсутствие случайной зависимости от test order, реального времени
+или остаточного temporary queue state.
+
+Полный suite подтверждает, что четыре новых сценария не сломали package,
+simulator boundary или telemetry fixture contract. XML/log проверка
+подтверждает, что существующий artifact contract автоматически включает новый
+suite.
+
+### Что сознательно осталось вне Step 5
+
+Step 5 не определял и не реализовывал:
+
+- production retry timing, attempt limits или backoff;
+- acknowledgement protocol или mapping transport result;
+- production idempotency key, database unique constraint или conflict result;
+- offline retention duration или durability guarantee;
+- queue capacity, overflow или data-loss policy;
+- performance, throughput, fleet scale или SLO;
+- Step 6 out-of-order current-state, stream restart, late-data или clock-skew
+  semantics;
+- API, HTTP, Storage Adapter, Supabase, PostgreSQL или Docker;
+- credentials, identity, roles, authorization или remote commands;
+- новые dependencies, caching, lint, type checking или coverage threshold;
+- deployment, branch protection, Pull Request merge или Hardware-in-the-Loop.
+
+### Состояние перед commit approval
+
+Implementation, tests и handoff подготовлены локально. `CI_PLAN.md` и
+`CI_STATE.md` имеют статус `READY_FOR_COMMIT`. `NEXT_SESSION.md` описывает
+только Step 6 и не разрешает начинать его, пока Step 5 не получит approved
+commit/push, successful Pull Request run и inspection опубликованного
+artifact.
+
+Удалённая проверка Step 5 пока намеренно не заявлена: она возможна только после
+явного разрешения пользователя на commit и push. До этого момента Step 5 не
+имеет статус `DONE`.

@@ -51,6 +51,31 @@ class DurableQueue(Protocol):
         """Return the number of queued messages."""
 
 
+def flush_test_queue(
+    test_queue: DurableQueue,
+    test_transport: Transport,
+) -> tuple[bytes, ...]:
+    """Attempt queued test messages in FIFO order until delivery is unavailable.
+
+    This is deterministic test orchestration, not a production retry or
+    acknowledgement policy. A configured successful transport result removes
+    the matching message only within the test scenario. A failed result stops
+    the explicit flush and leaves that message queued.
+    """
+    successful_attempts: list[bytes] = []
+
+    while (message := test_queue.peek()) is not None:
+        if not test_transport.send(message):
+            break
+
+        dequeued = test_queue.dequeue()
+        if dequeued != message:
+            raise RuntimeError("Test queue changed during deterministic flush")
+        successful_attempts.append(message)
+
+    return tuple(successful_attempts)
+
+
 class FixtureExhaustedError(RuntimeError):
     """Signal that a deterministic test fixture has no configured value left."""
 
