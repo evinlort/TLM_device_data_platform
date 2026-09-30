@@ -428,3 +428,50 @@ Source:
 Step 8 repository inspection, official Supabase CLI/local-development and
 database-migration guidance verified on 2026-09-30, and the safety constraints
 in the TLM CI master prompt.
+
+## CI-DEC-013 — Minimal backend-only opaque ingress schema
+
+Status: ACCEPTED
+
+Decision:
+
+Create the greenfield table `public.ingest_messages` with exactly two columns:
+`id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` and `body bytea NOT NULL`.
+Enable RLS and define no policies. Deny `anon` and `authenticated` table access;
+grant `service_role` only `INSERT` on the table and `USAGE` on the identity
+sequence. Permit duplicate bodies and zero-length `bytea` values. Defer every
+richer Product semantic.
+
+Reason:
+
+The user confirmed that the authorized development project was unused and
+explicitly approved `PROPOSAL v1` as the first greenfield persistence boundary.
+It is the smallest database representation of the existing provider-independent
+`StorageAdapter.store(message: bytes)` contract. Storing opaque bytes allows a
+real local database test without adopting the test-only telemetry fixture as a
+production schema or deciding future identity, ordering, idempotency, retention,
+or read-access behavior.
+
+Consequences:
+
+- `supabase/migrations/20260930233000_create_ingest_messages.sql` is the first
+  migration in the version-controlled database source of truth.
+- `id` is only an internal surrogate key. It does not define message identity,
+  device ordering, arrival authority, acknowledgement, or conflict resolution.
+- `body` remains opaque and may be empty or equal to another row's body; the
+  database does not parse or deduplicate it.
+- RLS with no policies prevents `anon` and `authenticated` access. The
+  `service_role` grant supports only backend insertion and does not grant reads,
+  updates, or deletes.
+- No browser or device receives privileged database credentials. The existing
+  provider-independent API/storage boundary remains the intended seam.
+- Production telemetry fields, read paths, API exposure, authorization beyond
+  backend insertion, retention, and every additional table or constraint
+  require separate confirmed decisions and migrations.
+- Step 9 validates this migration only on disposable local databases. It does
+  not deploy it to the authorized development project.
+
+Source:
+
+The user's explicit approval of `PROPOSAL v1` during Step 9 and the existing
+`CI-DEC-002`, `CI-DEC-011`, and `CI-DEC-012` boundaries.

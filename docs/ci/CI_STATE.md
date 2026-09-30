@@ -3,91 +3,99 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Starting HEAD for Step 8:
-  `11a96b308aa26a067cd2aeb995662f06f9c35471`.
-- Step 8 implementation commit:
-  `ef051ddeb7264ddbc392ba80c894d0d8027a46ae`.
-- The commit containing this file finalizes the Step 8 handoff; use
-  `git rev-parse HEAD` for its exact SHA without creating a self-referential
-  state update.
+- Starting HEAD for Step 9:
+  `632643d755c3758d334281994feae305ec9c6855`.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: public `evinlort/TLM_device_data_platform` with `main` as
   the default branch. Public visibility is intentional.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open, mergeable, and points from `ci/github-actions-foundation` to `main`.
-- Working tree: expected to be clean after the approved final Step 8 handoff
-  commit.
+- Working tree: contains only the reviewed, uncommitted Step 9 implementation
+  and handoff changes described below.
 
 ## Current milestone
 
-- Step: Step 8 — Define the Supabase schema bootstrap strategy.
-- Status: DONE.
-- Completion blockers: none.
+- Step: Step 9 — Add reproducible local database and database tests.
+- Status: READY_FOR_COMMIT.
+- Completion blockers: explicit user approval to commit and push; after push,
+  successful Pull Request workflow verification and artifact inspection.
 
 ## Verified starting state
 
-- Local branch, HEAD, remote-tracking branch, and Pull Request head all equal
-  `11a96b308aa26a067cd2aeb995662f06f9c35471`.
-- Required workflow `CI` run #16, ID `36747992035`, completed successfully for
-  that final Step 7 handoff commit. Every `Python 3.11` job step completed with
+- Local branch, starting HEAD, remote-tracking branch, and Pull Request head all
+  equal `632643d755c3758d334281994feae305ec9c6855`.
+- Required workflow `CI` run #18, ID `36761100821`, completed successfully for
+  that final Step 8 handoff commit. Every `Python 3.11` job step completed with
   conclusion `success`.
-- Its artifact `pytest-results-python-3.11`, ID `11112439370`, was downloaded
-  and inspected. GitHub and the downloaded ZIP both report SHA-256
-  `92a56afc6382c97df635277829ba29234d32c844dce03f84f71d7a4d9344b69c`.
-- The ZIP passed integrity checking and contains exactly non-empty
-  `pytest.xml` (`3481` bytes) and `pytest.log` (`961` bytes). The log reports
-  `22 passed`; parsed JUnit totals are `22` tests, `0` failures, `0` errors,
-  and `0` skipped.
-- This newer final-handoff run supplements the Step 7 implementation run #15
-  already recorded in history; both are successful and their artifacts were
-  inspected.
+- Its artifact `pytest-results-python-3.11`, ID `11118621855`, is not expired;
+  GitHub reports digest
+  `sha256:13f8f2e62dc02e6b3065dd5e804b67a53821385ce6a7f4cfab6bd1974e19db00`.
+- The artifact was downloaded and inspected. It contains exactly non-empty
+  `pytest.xml` and `pytest.log`; the log reports `22 passed`, and parsed JUnit
+  totals are `22` tests, `0` failures, `0` errors, and `0` skipped.
 
-## Implemented in Step 8
+## Authorized source and remote discovery
 
-- Added project-scoped Node tooling metadata with exact Supabase CLI
-  `2.118.0`, Node.js `>=20`, and a generated npm lock file.
-- Added `docs/ci/SUPABASE_SCHEMA_BOOTSTRAP.md` defining:
-  - ordered SQL migrations as the future Git source of truth;
-  - separate authorized-remote and approved-greenfield bootstrap paths;
-  - explicit review of generated `config.toml` and baseline SQL;
-  - credential and generated-state boundaries;
-  - disposable local rebuild expectations for Step 9;
-  - remote mutation commands that require separate authorization;
-  - the prohibition on automated production `db reset --linked`.
-- Added `CI-DEC-012` to preserve the migration-backed bootstrap decision.
-- Added `node_modules/` and generated `test-results/` to `.gitignore`.
-
-## Current database state
-
-- Repository inspection found no Supabase configuration, migrations,
-  declarative schema, seed, database tests, database client, or other SQL
-  schema source.
-- No remote Supabase schema source was explicitly authorized for Step 8.
-- No `supabase/config.toml` or migration was created because current
-  `supabase init` output includes a PostgreSQL major version and many local
-  Auth/API/Storage defaults that are not verified project facts.
-- No Supabase login, project link, schema pull, database reset, database push,
-  migration repair, Docker service, or local/remote database operation was
+- The user identified one exact Supabase project as a development environment,
+  confirmed it is not production, authorized read-only MCP inspection of only
+  the `public` schema, and authorized PostgreSQL major-version discovery.
+- PostgreSQL version discovery returned `17.6`; local configuration therefore
+  uses major version `17`.
+- Initial inspection found no Auth users, Storage buckets or objects, Vault
+  secrets, Edge Functions, or development branches. The application URL was
+  not connected to an app, site, or device according to the user.
+- The user manually removed seven obsolete functions and then removed the
+  remaining `rls_auto_enable()` function together with its dependent
+  `ensure_rls` event trigger.
+- Under separate explicit authorization, obsolete remote migration-history
+  entries were marked reverted with the locked CLI. No schema deployment,
+  `db push`, data write, project setting change, or other remote mutation was
   performed.
-- `TemporaryDirectoryStorage` remains a filesystem CI adapter and is not a
-  database, schema prototype, or Supabase emulator.
+- Final read-only inspection found zero `public` relations, functions,
+  policies, custom types, and migration-history entries. Six remaining event
+  triggers are platform-owned Supabase infrastructure (`supabase_admin` with
+  functions in `extensions`) and were intentionally retained.
+- The remote project remains empty and is not the runtime dependency or
+  deployment target of this Step 9 implementation.
+- The project reference, organization identifier, credentials, connection
+  strings, and generated link state are not stored in version-controlled files.
 
-## Tool and strategy facts
+## Approved greenfield requirement
 
-- Official Supabase guidance verified on 2026-09-30 recommends a
-  project-scoped npm dependency pinned for the team and requires Node.js 20 or
-  later for npm/npx use.
-- GitHub's official `supabase/cli` latest-stable endpoint reported release
-  `v2.118.0`, published 2026-09-25; it was not a prerelease.
-- Official guidance says `supabase init` creates `supabase/config.toml`, local
-  development requires a Docker-compatible runtime, migrations live under
-  `supabase/migrations/`, and `db reset` rebuilds a local database from them.
-- `db pull` requires a linked project or explicit database URL and a Docker
-  daemon for its shadow database. Current guidance shows it may offer to update
-  remote migration history, so even discovery needs explicit target approval.
-- Official team guidance is to make schema changes through local migrations
-  after bootstrap rather than direct changes to a shared remote database.
+The user explicitly approved `PROPOSAL v1`:
+
+- table `public.ingest_messages`;
+- columns `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` and
+  `body bytea NOT NULL`;
+- backend-only access with RLS enabled and no policies;
+- duplicate and empty `bytea` values are allowed;
+- all richer Product semantics are deferred.
+
+The implementation interprets backend-only narrowly: `anon` and
+`authenticated` receive no privileges, while `service_role` receives only
+`INSERT` on the table and `USAGE` on its identity sequence. The identity value
+does not define Product ordering, and `body` remains opaque.
+
+## Implemented in Step 9
+
+- Added a locked-CLI-generated `supabase/config.toml` reviewed for local use:
+  PostgreSQL major version `17`, migrations enabled, seed disabled, and
+  `api.auto_expose_new_tables = false` so grants remain explicit.
+- Added `supabase/migrations/20260930233000_create_ingest_messages.sql` as the
+  first version-controlled database migration.
+- The migration creates only the approved table, documents its opaque boundary,
+  enables RLS, revokes inherited application-role access, and grants only the
+  approved backend insert path.
+- Added `supabase/tests/ingest_messages.test.sql`, an 18-assertion transactional
+  pgTAP test for the approved schema, RLS/policy state, privileges, exact opaque
+  byte round-trip, empty bytes, and duplicates.
+- Added generated Supabase state exclusions in root and Supabase-local
+  `.gitignore` files.
+- Added `CI-DEC-013` to preserve the approved minimal ingress decision and its
+  explicit non-decisions.
+- No seed, remote link, remote deployment, API adapter implementation, Python
+  product behavior, or GitHub Actions database job was added.
 
 ## Validation
 
@@ -96,8 +104,7 @@
 - `npx supabase --version`: PASS (`2.118.0`).
 - `npm ls --depth=0`: PASS; the only direct package is
   `supabase@2.118.0`.
-- JSON/lock assertions: PASS; package is private, Node baseline is `>=20`, and
-  manifest plus lock both resolve exact CLI version `2.118.0`.
+- `supabase/config.toml` parse and required-value assertions: PASS.
 - Locked Python reinstall: PASS.
 - `.venv/bin/python -m pip check`: PASS
   (`No broken requirements found`).
@@ -106,29 +113,25 @@
 - JUnit parse: PASS (`22` tests, `0` failures, `0` errors, `0` skipped).
 - Installed-package import from `/tmp`: PASS; `local_integration.py` resolves
   from `.venv/lib/python3.11/site-packages`.
-- Repository scan confirms no `supabase/` directory, remote credential,
-  production URL, secret reference, connection string, `pull_request_target`,
-  or new required-CI production dependency.
-- Existing workflow still creates, validates, and uploads both pytest result
-  files with always-run behavior.
-- `git diff --check` plus untracked-file whitespace validation: PASS.
-
-Remote Step 8 validation:
-
-- Commit: `ef051ddeb7264ddbc392ba80c894d0d8027a46ae`.
-- Workflow: `CI`, run ID `36760536805`, run number `17`, conclusion
-  `success`.
-- Job: `Python 3.11`; checkout, Python setup, locked install, `pip check`,
-  pytest, result validation, artifact upload, and all post steps completed with
-  conclusion `success`.
-- Artifact: `pytest-results-python-3.11`, ID `11118133887`, `1494` archive
-  bytes, not expired when inspected.
-- GitHub digest and downloaded ZIP SHA-256 both equal
-  `44b67a55d353dcb32250aabc9ff15bd59edcf3665ed5b5ae92578d0fb03364ee`.
-- ZIP integrity: PASS; it contains exactly `pytest.xml` (`3481` bytes) and
-  `pytest.log` (`961` bytes), both non-empty.
-- Downloaded JUnit XML: `22` tests, `0` failures, `0` errors, `0` skipped.
-- Downloaded pytest log: PASS; final summary is `22 passed in 0.19s`.
+- Native disposable PostgreSQL `17.9` fallback independently applied the
+  migration and confirmed both column definitions, identity mode, RLS, zero
+  policies, role privileges, exact bytes, empty bytes, and duplicates.
+- A disposable rootless Docker daemon then allowed the locked Supabase CLI to
+  start its local stack without system Docker access.
+- Official Supabase cycle 1: `db reset --local` PASS; migration applied;
+  `supabase test db` PASS (`1` file, `18` tests).
+- Live local catalog: PostgreSQL `17.6`, RLS enabled, `0` policies,
+  `anon` SELECT denied, `authenticated` INSERT denied, `service_role` INSERT
+  granted and SELECT denied.
+- Official Supabase cycle 2: clean reset and database test PASS again
+  (`18/18`).
+- `supabase stop --no-backup`: PASS; no local Supabase containers remained.
+- The temporary rootless Docker daemon and its multi-gigabyte `/tmp` data were
+  removed without modifying host Docker configuration.
+- Secret/identifier scan: PASS; no remote project reference, URL, connection
+  string, credential, token, or password appears in the Step 9 source changes.
+- Final `git diff --check` and untracked-file whitespace validation after the
+  persistent handoff update: PASS.
 
 ## Required CI
 
@@ -138,34 +141,39 @@ Remote Step 8 validation:
   - `.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'`
   - `.venv/bin/python -m pip check`
   - `.venv/bin/python -m pytest`
-- Supabase CLI tool reproduction:
-  - `npm ci`
-  - `npx supabase --version`
-- Required CI still uses no physical hardware, Docker, secret, credential,
-  production service, Supabase project, or PostgreSQL instance.
+- Local database reproduction after `npm ci`:
+  - `npx supabase start`
+  - `npx supabase db reset --local`
+  - `npx supabase test db`
+  - `npx supabase stop --no-backup`
+- The current required workflow is intentionally unchanged and still uses no
+  physical hardware, Docker, secret, credential, production service, Supabase
+  project, or PostgreSQL instance. Step 10 will add the disposable local
+  database/integration job.
 
 ## Product decisions still OPEN
 
 - Product telemetry envelope, field names, schema versions, field semantics,
   and rates per `system_type`.
-- Authoritative database schema source and, if remote, exact authorized project,
-  environment, schema scope, and PostgreSQL major version.
-- Production tables, columns, identifiers, constraints, transactions,
-  retention, and conflict-resolution policy.
+- Production tables and columns beyond the approved opaque ingress boundary.
+- Production identifiers, transactions, retention, and conflict resolution.
 - Production history, current-state, stream identity, reboot, ordering,
   late-data, timestamp trust, and idempotency policy.
 - Credential implementation and provisioning details.
 - Group/session role and authorization semantics.
-- RLS versus Application API authorization split.
+- Any authorization path beyond backend-only `service_role` insertion into
+  `public.ingest_messages`, including read access and API exposure.
 - Production acknowledgement, retry, reconnect, buffer, overflow, and data-loss
   policies.
 - Command authority, SLO, production scale, and cost.
 
-## Files changed in Step 8
+## Files changed in Step 9
 
 - `.gitignore`
-- `package.json`
-- `package-lock.json`
+- `supabase/.gitignore`
+- `supabase/config.toml`
+- `supabase/migrations/20260930233000_create_ingest_messages.sql`
+- `supabase/tests/ingest_messages.test.sql`
 - `docs/ci/SUPABASE_SCHEMA_BOOTSTRAP.md`
 - `docs/ci/CI_PLAN.md`
 - `docs/ci/CI_STATE.md`
@@ -173,17 +181,17 @@ Remote Step 8 validation:
 - `docs/ci/DECISIONS.md`
 - `docs/ci/FLOW_EXPLANATIONS.md`
 
-No Python source, test, dependency, or GitHub Actions workflow file changed.
+No Python source, Python test, Python dependency, npm dependency, or GitHub
+Actions workflow file changed.
 
 ## Next step
 
-- Step: Step 9 — Add a reproducible local database and confirmed database
-  tests.
-- Activation requires Step 8 to be committed, pushed, remotely successful, and
-  artifact-inspected, plus an explicitly authorized existing schema source or
-  approved greenfield schema requirements.
-- If the schema-source prerequisite is absent, the next session must stop and
-  request it rather than invent tables, roles, RLS, or tests.
+- Step: Step 10 — Add the local integration CI job.
+- Activation requires the reviewed Step 9 changes to be committed and pushed,
+  the updated Pull Request workflow to succeed, and its published test-results
+  artifact to be downloaded and inspected.
+- Step 10 must run only disposable local infrastructure on a clean runner and
+  must not link to or depend on any remote Supabase project.
 
-Use `docs/ci/BOOTSTRAP_PROMPT.md` for the next session. Do not start Step 9 in
+Use `docs/ci/BOOTSTRAP_PROMPT.md` for the next session. Do not start Step 10 in
 this session.

@@ -180,7 +180,7 @@ Dependencies: Step 7 and user approval for any remote schema access.
 
 ### Step 9 — Add reproducible local database and database tests
 
-Status: NOT_STARTED
+Status: READY_FOR_COMMIT
 
 Acceptance criteria:
 
@@ -191,6 +191,25 @@ Acceptance criteria:
 
 Dependencies: committed and remotely verified Step 8, plus an explicitly
 authorized existing schema source or confirmed greenfield schema requirements.
+
+Implementation summary:
+
+- The authorized development project was inspected and cleaned to an empty
+  `public` application schema before local authoring; no production project was
+  involved and no application data existed.
+- The explicitly approved greenfield baseline creates only
+  `public.ingest_messages` with an identity `bigint` primary key and an opaque,
+  non-null `bytea` body.
+- RLS is enabled with no policies. `anon` and `authenticated` receive no table
+  access; `service_role` receives only the table and sequence privileges needed
+  to insert.
+- The locked Supabase CLI configuration targets PostgreSQL 17 locally, disables
+  implicit Data API grants for new tables, enables migrations, and disables
+  seed data.
+- An 18-assertion pgTAP test proves the approved shape, privileges, exact byte
+  round-trip, and permission for duplicate and empty byte strings.
+- Two clean local Supabase reset/test cycles passed. Existing Python validation
+  remains green, and required CI is unchanged until Step 10.
 
 ### Step 10 — Add the local integration CI job
 

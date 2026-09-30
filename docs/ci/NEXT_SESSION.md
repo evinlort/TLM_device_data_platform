@@ -2,26 +2,19 @@
 
 ## Activation condition
 
-Step 9 may start only after Step 8 is committed, pushed, successful in the Pull
-Request workflow, and the published test-results artifact has been downloaded
-and inspected. Verify the actual branch, HEAD, remote, clean working tree, Pull
-Request, latest required CI result, artifact listing, and downloaded artifact
-against `docs/ci/CI_STATE.md` before any change.
+Step 10 may start only after Step 9 is committed, pushed, successful in the
+Pull Request workflow, and the published Python test-results artifact has been
+downloaded and inspected. Verify the actual branch, HEAD, remote, clean working
+tree, Pull Request, latest required CI result, artifact listing, and downloaded
+artifact against `docs/ci/CI_STATE.md` before any change.
 
-Step 9 also requires one of these inputs:
-
-1. explicit user authorization identifying an existing Supabase project and
-   environment whose schema may be inspected and captured; or
-2. confirmed greenfield schema requirements sufficient to author the first
-   migration without inventing Product semantics.
-
-If neither input exists, stop and request the missing source-of-truth decision.
-Do not create placeholder production tables, roles, RLS policies, or database
-tests.
+The Step 9 migration and database test must be present in the verified remote
+commit. Do not substitute the authorized development project for local CI and
+do not deploy the migration remotely as part of activation.
 
 ## Step
 
-Step 9 — Add a reproducible local database and confirmed database tests
+Step 10 — Add the local integration CI job
 
 ## Read first
 
@@ -35,67 +28,81 @@ Step 9 — Add a reproducible local database and confirmed database tests
 
 Additional files relevant to this step:
 
+- `.github/workflows/ci.yml`
 - `package.json`
 - `package-lock.json`
-- `.github/workflows/ci.yml`
+- `supabase/config.toml`
+- `supabase/migrations/20260930233000_create_ingest_messages.sql`
+- `supabase/tests/ingest_messages.test.sql`
 - `src/tlm_device_data_platform/local_integration.py`
 - `tests/test_local_integration.py`
 
-Inspect any Supabase/schema files that exist at the start of the session. Do
-not read unrelated future files unless the current step requires them.
+Do not read or change unrelated future files unless this step requires them.
 
 ## Goal
 
-Establish a version-controlled Supabase/PostgreSQL configuration and real
-baseline migration from an authorized source, then prove that a disposable
-local database can be rebuilt from Git and run only database tests supported by
-confirmed requirements.
+Add one reproducible GitHub-hosted Pull Request job that starts only disposable
+local Supabase/PostgreSQL infrastructure, rebuilds the approved migration from
+Git, runs the database tests, exercises the existing provider-independent local
+integration boundary where justified, and always cleans up. It must require no
+physical hardware, production service, remote Supabase project, or secret.
 
 ## Required approach
 
-- Follow `docs/ci/SUPABASE_SCHEMA_BOOTSTRAP.md`.
-- Use the exact project-scoped Supabase CLI version already locked in npm.
-- For a remote source, identify and re-confirm the exact project, environment,
-  schema scope, PostgreSQL major version, and allowed commands before linking
-  or pulling.
-- Explain the target and effect before every remote command.
-- Keep credentials, passwords, connection strings, `.temp` state, and remote
-  identifiers out of commits and artifacts unless a non-secret identifier is
-  explicitly approved for version control.
-- Review generated configuration and SQL before local application.
-- Use only disposable local services for rebuild and tests.
+- Use the exact project-scoped Supabase CLI version and npm lock already in the
+  repository.
+- Verify current GitHub-hosted runner and Supabase CLI requirements before
+  choosing runner setup or commands.
+- Keep the existing `CI / Python 3.11` check stable unless a reviewed workflow
+  reason requires a change.
+- Add a separate, clearly named local integration/database job with an explicit
+  timeout.
+- Start Supabase locally without `supabase link`, remote credentials, or remote
+  identifiers.
+- Rebuild from `supabase/migrations/` and run `supabase test db`.
+- Connect the existing local API/storage integration flow to the approved
+  ingress table only if the smallest adapter and test can preserve opaque bytes
+  without inventing API, acknowledgement, transaction, or Product semantics.
+- Make cleanup execute reliably after success or failure and preserve useful
+  failure logs/artifacts without exposing credentials.
+- Reproduce the workflow locally as far as the environment allows.
 
 ## Out of scope and safety limits
 
-- Never run `supabase db reset --linked` against production.
-- Do not run `db push`, `migration repair`, accept a remote-history update, or
-  perform any other remote mutation without separate explicit authorization.
-- Do not invent tables, columns, roles, grants, RLS, authorization, retention,
-  idempotency, ordering, conflict-resolution, or seed semantics.
-- Do not add the Step 10 integration CI job in this session.
-- Do not deploy, merge the Pull Request, configure branch protection, or add
-  unrelated caching, lint, typing, coverage, scale, or SLO policy.
+- No `supabase link`, `db pull`, `db push`, `migration repair`, linked reset,
+  remote SQL, or any other remote Supabase access or mutation.
+- Do not add production secrets, project references, database passwords, or
+  connection strings to GitHub Actions, Git, logs, or artifacts.
+- Do not invent richer tables, fields, constraints, policies, seed data,
+  telemetry parsing, identity, retention, ordering, idempotency, or authorization
+  semantics.
+- Do not make required CI depend on the authorized development project.
+- Do not begin Step 11, deploy, merge the Pull Request, configure branch
+  protection, or add unrelated caching, lint, typing, coverage, scale, or SLO
+  policy.
 
 ## Validation
 
-Validate every file introduced by the authorized schema source. At minimum:
+At minimum:
 
-- clean `npm ci` and exact CLI version;
-- local stack startup without production secrets;
-- clean local rebuild from version-controlled migrations;
-- confirmed database tests, if requirements exist;
-- reliable local cleanup;
+- workflow syntax and full-SHA action pin validation;
+- clean locked npm installation and exact Supabase CLI version;
+- clean local Supabase startup and migration rebuild;
+- `supabase test db` with all 18 current assertions passing;
+- any added adapter/integration test over real local boundaries;
+- reliable always-run cleanup on the tested path;
 - locked Python reinstall, `pip check`, and full pytest suite;
 - installed-package import where relevant;
-- preservation of the pytest artifact contract;
-- scan for secrets, production dependencies, and untracked generated state;
+- preservation of the existing Python pytest artifact contract;
+- scan for secrets, remote identifiers, production dependencies, and untracked
+  generated state;
 - `git diff --check` and untracked-file whitespace validation.
 
-After approved commit and push, verify the updated Pull Request workflow and
-inspect its published artifact.
+After approved commit and push, verify every updated Pull Request job and
+download and inspect every required result artifact.
 
 ## Stop condition
 
-Stop after Step 9 implementation, validation, persistent handoff update,
+Stop after Step 10 implementation, validation, persistent handoff update,
 approved commit/push, successful Pull Request workflow verification, and
-artifact inspection. Do not start Step 10 in the same session.
+artifact inspection. Do not start Step 11 in the same session.

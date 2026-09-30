@@ -2885,3 +2885,260 @@ Docker или physical hardware dependency.
 отдельного авторизованного schema source или подтверждённых greenfield schema
 requirements и должна выполняться только в новой сессии через
 `docs/ci/BOOTSTRAP_PROMPT.md`.
+
+## Step 9 — Воспроизводимая локальная база и подтверждённые database tests
+
+### Зачем был нужен этот шаг
+
+После Step 8 repository уже фиксировал exact Supabase CLI version и безопасную
+bootstrap strategy, но ещё не содержал самой базы: отсутствовали
+`supabase/config.toml`, migrations и database tests. Поэтому Git не мог
+воспроизвести PostgreSQL schema, а CI не мог доказать ни её форму, ни access
+boundary.
+
+Step 9 должен был превратить только подтверждённое требование в минимальный
+database source of truth. Здесь особенно важно было не скопировать в production
+model test-only telemetry fixture из Python tests и не придумать message ID,
+device fields, timestamps, ordering, deduplication, retention или пользовательские
+read policies. Всё это остаётся отдельными Product decisions.
+
+### Подтверждённый источник и границы разрешений
+
+Пользователь указал точный Supabase project, классифицировал его как
+`development`, подтвердил `Production: no`, ограничил schema scope значением
+`public` и отдельно разрешил read-only MCP inspection и определение PostgreSQL
+major version. Project reference использовался только для авторизованной
+операции и не был записан в version-controlled files.
+
+Discovery показал PostgreSQL `17.6`. В проекте не было Auth users, Storage
+buckets/objects, Vault secrets, Edge Functions или development branches; по
+словам пользователя, Supabase URL не использовался приложением, сайтом или
+устройством. В `public` первоначально оставались старые database functions и
+migration-history entries, поэтому такой remote state нельзя было объявить
+чистым greenfield baseline.
+
+Пользователь вручную удалил семь functions. Последняя
+`rls_auto_enable()` сначала не удалялась, потому что от неё зависел event
+trigger `ensure_rls`; пользователь затем удалил и trigger, и function. Отдельно
+были явно разрешены `supabase link`, scoped `db pull`, а позже очистка remote
+migration history при запрете остальных remote mutations. Для трёх устаревших
+history entries locked CLI выполнил только `migration repair --status reverted`.
+Никакой schema deployment, `db push`, remote data write или settings change не
+выполнялись.
+
+Итоговая read-only проверка показала ноль `public` relations, functions,
+policies, custom types и migration-history entries. Шесть оставшихся event
+triggers принадлежат Supabase platform: owner `supabase_admin`, trigger
+functions находятся в `extensions`. Они не являются application objects и
+были намеренно сохранены. Таким образом remote project был приведён к пустому
+development state, но migration этого шага туда не разворачивалась.
+
+После discovery пользователь явно утвердил `PROPOSAL v1`:
+
+- `public.ingest_messages`;
+- `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY`;
+- `body bytea NOT NULL`;
+- backend-only access, RLS enabled, no policies;
+- duplicate и empty `bytea` разрешены;
+- все более богатые Product semantics отложены.
+
+Это подтверждение стало единственным источником schema requirements. Durable
+граница записана как `CI-DEC-013`.
+
+### Что изменилось
+
+Locked CLI `2.118.0` создал `supabase/config.toml`. Generated файл сохранён,
+потому что после discovery его ключевой database fact уже можно было проверить:
+`db.major_version = 17`. Верхний комментарий явно говорит, что остальные
+значения являются local test configuration и не определяют production Auth,
+API, Storage, Realtime, SMTP или telemetry requirements.
+
+Дополнительно review изменил только значения, необходимые для безопасного
+локального baseline:
+
+- `project_id = "tlm-device-data-platform-local"` отделяет local stack от
+  remote project;
+- `api.auto_expose_new_tables = false` запрещает implicit grants новым
+  `public` objects;
+- migrations включены;
+- seed выключен и seed paths пусты;
+- PostgreSQL major version равен подтверждённому `17`.
+
+Первый source-of-truth migration находится в
+`supabase/migrations/20260930233000_create_ingest_messages.sql`. Он создаёт
+ровно одну утверждённую таблицу и две утверждённые колонки. Comments в SQL
+фиксируют важные non-decisions: `id` является только internal surrogate key и
+не задаёт Product ordering; `body` остаётся opaque bytes и не определяет
+production telemetry contract.
+
+Migration включает RLS, но не создаёт ни одной policy. Он сначала отзывает
+table privileges у `PUBLIC`, `anon`, `authenticated` и `service_role`, затем
+выдаёт `service_role` только `INSERT`. Для identity sequence тому же backend
+role выдан только `USAGE`. Поэтому browser/device roles не получают database
+access, а backend role не получает `SELECT`, `UPDATE` или `DELETE` через эту
+migration. Никакие privileged credentials в repository не добавлены.
+
+Database test `supabase/tests/ingest_messages.test.sql` выполняется внутри
+transaction и завершает её `ROLLBACK`. Его 18 pgTAP assertions проверяют:
+
+- наличие единственной ожидаемой table shape;
+- типы, `NOT NULL`, identity mode и primary key;
+- включённый RLS и отсутствие policies;
+- отсутствие `SELECT`/`INSERT` у `anon` и `authenticated`;
+- наличие backend `INSERT` privilege у `service_role`;
+- точный round-trip bytes `00ff`;
+- разрешённый zero-length `bytea`;
+- разрешённые duplicate bodies.
+
+Test не утверждает, что bytes являются JSON, telemetry envelope или уникальным
+message. Он также не превращает identity order в business order.
+
+Root `.gitignore` теперь исключает `supabase/.temp/`, а
+`supabase/.gitignore` сохраняет generated `.branches`, `.temp` и local dotenv
+state вне Git. Seed file не создавался, потому что approved baseline разрешает
+empty database и не требует test data при reset.
+
+### Как теперь работает локальный поток
+
+После clean `npm ci` repository получает exact CLI `2.118.0` из lock file.
+Локальный database flow имеет следующий вид:
+
+```text
+npx supabase start
+  -> disposable local Supabase/PostgreSQL 17 starts
+  -> version-controlled migration is applied
+npx supabase db reset --local
+  -> local database is recreated from migrations only
+  -> no seed or remote project is used
+npx supabase test db
+  -> transactional pgTAP contract runs
+  -> approved shape, RLS, grants and byte behavior are checked
+npx supabase stop --no-backup
+  -> disposable services are removed
+```
+
+Этот flow решает задачу Step 9: база восстанавливается из Git, tests опираются
+только на подтверждённые requirements, а required path не зависит от remote
+development или production Supabase.
+
+### Что происходило во время реализации и как решались проблемы
+
+#### Remote schema не был принят за source of truth автоматически
+
+Read-only inspection обнаружил старые objects и history. Вместо создания
+baseline из сомнительного состояния работа остановилась на discovery, а
+пользователь отдельно подтвердил очистку. Functions и dependent trigger были
+удалены пользователем. Remote history была изменена только после отдельного
+явного разрешения на конкретную mutation. После этого повторная inspection
+доказала пустой application scope.
+
+#### Обычный system Docker socket был недоступен
+
+`/var/run/docker.sock` нельзя было использовать в текущей среде. До запуска
+официального local stack migration была независимо проверена на disposable
+native PostgreSQL `17.9`: SQL применился, catalog shape и privileges совпали с
+ожиданием, а opaque, empty и duplicate bytes сохранились корректно. Это дало
+раннюю SQL-проверку, но не заменило required Supabase CLI validation.
+
+В системе оказался установлен `dockerd-rootless.sh`. Для Step 9 был запущен
+эпhemeral rootless Docker daemon, полностью размещённый в уникальном `/tmp`
+directory и доступный только через его local Unix socket. Host Docker config,
+system daemon и repository files не менялись. Locked CLI скачал необходимые
+local images и успешно поднял Supabase stack.
+
+#### Проверка повторяемости выполнялась дважды
+
+После первого `supabase db reset --local` migration применилась, а
+`supabase test db` сообщил один test file и все `18` успешных assertions. Live
+catalog отдельно подтвердил PostgreSQL `17.6`, RLS, ноль policies и точный
+privilege boundary. Затем reset и database test были повторены с тем же
+результатом `18/18`. Второй цикл доказывает, что успешный результат не зависел
+от одноразового состояния первого startup.
+
+#### Cleanup rootless storage потребовал UID-aware удаления
+
+`supabase stop --no-backup` успешно остановил local services, после чего список
+containers был пуст. Сам rootless daemon корректно завершился. Его примерно
+`3.4G` временного storage нельзя было полностью удалить обычным host-side
+`rm`, потому что часть файлов имела UID mapping user namespace. Cleanup был
+выполнен через временный `rootlesskit` namespace с тем же mapping. После этого
+и data directory, и cleanup state отсутствовали. Это был только cleanup в
+`/tmp`; пользовательские и repository files не удалялись.
+
+#### Последний Step 8 artifact был перепроверен
+
+Перед изменением handoff был подтверждён final-handoff workflow `CI`, run
+`36761100821`, на starting HEAD Step 9. Job `Python 3.11` и все его steps имеют
+`success`. Artifact `pytest-results-python-3.11` был скачан и распакован:
+`pytest.log` показывает `22 passed`, а `pytest.xml` содержит `22` tests, ноль
+failures, errors и skipped. Поэтому Step 9 действительно начался с полностью
+проверенного Step 8, а не только с artifact metadata.
+
+### Проверка и что она доказывает
+
+Tool and configuration validation:
+
+- clean `npm ci`: PASS, `9` packages, `0 vulnerabilities`;
+- `npx supabase --version`: `2.118.0`;
+- `npm ls --depth=0`: единственная direct dependency
+  `supabase@2.118.0`;
+- TOML parse и assertions для project ID, PostgreSQL `17`, migrations, seed и
+  explicit-grant mode: PASS;
+- scan не нашёл remote project reference, URL, connection string, token,
+  password или credential в source changes.
+
+Official database validation:
+
+- Supabase local startup: PASS;
+- clean reset cycle 1: PASS;
+- pgTAP cycle 1: `18/18` PASS;
+- live catalog и role privileges: PASS;
+- clean reset cycle 2: PASS;
+- pgTAP cycle 2: `18/18` PASS;
+- stop without backup: PASS;
+- containers и временный daemon/storage после cleanup отсутствуют.
+
+Python regression validation:
+
+- locked reinstall: PASS;
+- `pip check`: PASS;
+- полный workflow-equivalent pytest: `22 passed`;
+- JUnit: `22` tests, `0` failures, `0` errors, `0` skipped;
+- installed-package import из `/tmp`: PASS.
+
+Таким образом доказаны clean rebuild, repeatability, approved database
+contract и отсутствие regression в существующем provider-independent Python
+flow. Required GitHub Actions workflow намеренно пока не изменён: перенос
+Supabase lifecycle на clean GitHub-hosted runner является отдельным Step 10.
+
+### Что сознательно осталось вне Step 9
+
+Step 9 не добавлял и не определял:
+
+- deployment migration в remote development project;
+- production или staging access;
+- remote dependency required CI;
+- device/browser database credentials;
+- API route или acknowledgement semantics;
+- JSON/telemetry parsing в database;
+- Product message ID, device ID, system type или timestamp columns;
+- uniqueness, deduplication, ordering, late-data или current-state policy;
+- retention, archive, partitioning или capacity policy;
+- read, update или delete access;
+- production Auth/RLS model;
+- seed data;
+- Step 10 GitHub Actions database/integration job;
+- deployment, branch protection или Pull Request merge.
+
+### Состояние перед commit approval
+
+Implementation, два official local rebuild/test cycles, Python regression
+checks, cleanup и persistent handoff подготовлены локально. `CI_PLAN.md` и
+`CI_STATE.md` имеют статус `READY_FOR_COMMIT`. `NEXT_SESSION.md` описывает
+только Step 10 и запрещает remote Supabase dependency или mutation.
+
+Step 9 ещё не считается `DONE`: commit и push требуют явного разрешения
+пользователя. После push нужно дождаться updated Pull Request workflow,
+проверить каждый required job и скачать его test-results artifact. Только после
+этого handoff можно финализировать как удалённо подтверждённый Step 9. В этой
+сессии Step 10 не начинается.

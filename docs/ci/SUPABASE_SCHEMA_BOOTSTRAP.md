@@ -112,16 +112,35 @@ npm ci
   -> local services stop reliably
 ```
 
-The exact `supabase start`, `supabase db reset`, and `supabase test db` commands
-will be recorded only after `config.toml` and a real baseline migration exist
-and have been validated. Required Pull Request CI must use local disposable
-services and must not link to or depend on production Supabase.
+The validated local commands are:
 
-## Current blocker for database implementation
+```bash
+npm ci
+npx supabase start
+npx supabase db reset --local
+npx supabase test db
+npx supabase stop --no-backup
+```
 
-Step 8 establishes the tool and decision process, but there is still no
-authorized schema source. Step 9 database rebuild/tests cannot define tables,
-roles, RLS, or assertions until either an existing remote schema is explicitly
-authorized for capture or a greenfield schema is approved. This is a Product
-and source-of-truth input requirement, not a reason to invent a temporary
-production model.
+Required Pull Request CI must use local disposable services and must not link
+to or depend on production Supabase.
+
+## Step 9 resolution
+
+The user authorized inspection of one non-production development project and
+confirmed a greenfield schema after the project had been emptied. Final
+inspection found no application relations, functions, policies, custom types,
+or migration-history entries in the authorized scope. Platform-owned Supabase
+event triggers were retained.
+
+The approved baseline is recorded in
+`supabase/migrations/20260930233000_create_ingest_messages.sql` and is limited
+to the opaque backend ingress boundary documented by `CI-DEC-013`.
+`supabase/config.toml` records PostgreSQL major version `17` and only local test
+configuration. `supabase/tests/ingest_messages.test.sql` proves the confirmed
+shape and access behavior.
+
+Broader Product schema and authorization semantics remain unresolved, but they
+do not block this minimal baseline. They must be added only through separately
+approved future migrations; the test-only telemetry fixture must not be copied
+into the production schema by inference.
