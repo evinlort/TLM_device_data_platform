@@ -3,28 +3,30 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Base HEAD before the uncommitted Step 4.5 work:
-  `1ee0e45eafab56315f40aa266b1b627994388074`.
+- Step 4.5 implementation commit:
+  `a4604c7a5ca43fa9f6d65ce27be1a622d28435fe`.
+- The commit containing this file finalizes the Step 4.5 handoff; use
+  `git rev-parse HEAD` for its exact SHA without creating a self-referential
+  state update.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: private `evinlort/TLM_device_data_platform` with `main`
   as the default branch.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
-  is open from `ci/github-actions-foundation` to `main`, is mergeable, and its
-  remote head matches the base HEAD above.
+  is open from `ci/github-actions-foundation` to `main` and is mergeable.
 - GitHub Actions run
-  [CI #8](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36705516577)
-  completed successfully for that base HEAD.
-- Working tree: contains the completed, locally validated, uncommitted Step
-  4.5 implementation and handoff updates pending explicit commit approval.
+  [CI #9](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36708553100)
+  completed successfully for the Step 4.5 implementation commit.
+- Artifact `pytest-results-python-3.11`, ID `11093152151`, was downloaded and
+  inspected successfully from that run.
+- Working tree: expected to be clean after the approved final Step 4.5 handoff
+  commit.
 
 ## Current milestone
 
 - Step: Step 4.5 — Publish test result artifacts.
-- Status: READY_FOR_COMMIT.
-- Remaining completion gates: explicit commit/push approval, a successful
-  Pull Request workflow for the pushed Step 4.5 HEAD, and download/inspection
-  of its published artifact.
+- Status: DONE.
+- Completion blockers: none.
 
 ## Verified facts
 
@@ -88,8 +90,23 @@ launcher rejected the local AppArmor state. Pull Request and workflow state
 were therefore verified through the authenticated GitHub connector; this did
 not require a repository or workflow workaround.
 
-Remote validation and artifact inspection for the pushed Step 4.5 HEAD are
-pending commit approval.
+Remote validation:
+
+- Workflow: `CI`, run ID `36708553100`, run number `9`.
+- Commit: `a4604c7a5ca43fa9f6d65ce27be1a622d28435fe`.
+- Job: `Python 3.11`.
+- Conclusion: SUCCESS.
+- Checkout, Python setup, locked installation, dependency consistency, pytest,
+  result-file validation, and artifact upload all completed successfully.
+- Artifact: `pytest-results-python-3.11`, ID `11093152151`, `1113` archive
+  bytes, not expired when inspected.
+- GitHub-reported and downloaded ZIP SHA-256 both equal
+  `f2aa0cf4a9aaabe41d6f4308f9b2fe28fc9c308e8010b744ee3838bbf087639e`.
+- The downloaded ZIP passed archive integrity validation and contained exactly
+  the expected non-empty `pytest.xml` (`2117` bytes) and `pytest.log` (`721`
+  bytes).
+- Downloaded JUnit XML: `12` tests, `0` failures, `0` errors, `0` skipped.
+- Downloaded pytest log: PASS; it records the runner XML path and `12 passed`.
 
 ## Current CI
 
@@ -137,12 +154,10 @@ architecture decision.
 ## Next step
 
 - Step: Step 5 — Add duplicate, offline, and reconnect scenarios.
-- Activation requires Step 4.5 to be committed, pushed, successful in the
-  Pull Request workflow, and its published artifact to be downloaded and
-  inspected.
+- Step 4.5 is committed, pushed, successful in the Pull Request workflow, and
+  its published artifact has been downloaded and inspected.
 - Step 5 must not infer product retry, retention, capacity, or overflow policy
   beyond explicitly test-only deterministic scenarios.
 
 Step 5 must start in a new Codex session using
-`docs/ci/BOOTSTRAP_PROMPT.md`. Do not start it while Step 4.5 completion gates
-remain open.
+`docs/ci/BOOTSTRAP_PROMPT.md`. Do not start it in this session.

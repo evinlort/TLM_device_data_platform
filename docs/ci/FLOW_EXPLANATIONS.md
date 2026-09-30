@@ -1394,7 +1394,37 @@ Step 4.5 не добавлял:
 - caching, lint, type checking, coverage threshold или test splitting;
 - deployment, branch protection, PR merge или Hardware-in-the-Loop.
 
-После локальной валидации Step 4.5 имеет статус `READY_FOR_COMMIT`. Для полного
-завершения нужны явное разрешение пользователя на commit/push, успешный новый
-`CI / Python 3.11`, появление artifact в этом run и download/inspection обоих
-файлов из artifact. Step 5 в этой сессии не начинается.
+### Удалённая проверка и завершение шага
+
+После явного разрешения пользователя реализация и подготовленный handoff были
+зафиксированы commit `a4604c7` (`ci: publish pytest result artifacts`) и
+отправлены в `ci/github-actions-foundation`.
+
+Push запустил GitHub Actions workflow `CI`, run ID `36708553100`, run number
+`9`. Job `Python 3.11` завершился с conclusion `success`. Все значимые steps —
+locked installation, `pip check`, pytest, `Validate test result files` и
+`Upload test results` — завершились успешно.
+
+Run опубликовал artifact `pytest-results-python-3.11`, ID `11093152151`,
+размером `1113` archive bytes. Artifact был скачан во временный каталог через
+GitHub Actions API. SHA-256 скачанного ZIP
+`f2aa0cf4a9aaabe41d6f4308f9b2fe28fc9c308e8010b744ee3838bbf087639e`
+точно совпал с digest, который сообщил GitHub. ZIP integrity check не нашёл
+ошибок.
+
+Внутри находились ровно два ожидаемых непустых файла:
+
+- `pytest.xml` — `2117` bytes, `12` tests, `0` failures, `0` errors,
+  `0` skipped;
+- `pytest.log` — `721` bytes, содержит runner path созданного XML и итог
+  `12 passed in 0.03s`.
+
+Таким образом, remote проверка доказала всю цепочку на чистом GitHub-hosted
+runner: reports не только создаются локально, но проходят always-run
+validation, загружаются официальным action, появляются в API, скачиваются как
+целостный artifact и содержат ожидаемые machine-readable и human-readable
+результаты.
+
+После успешного run и inspection `CI_PLAN.md` и `CI_STATE.md` переведены из
+`READY_FOR_COMMIT` в `DONE`. Следующим шагом остаётся Step 5; никакая его
+реализация в рамках Step 4.5 не выполнялась.
