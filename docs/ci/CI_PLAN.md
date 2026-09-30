@@ -180,7 +180,7 @@ Dependencies: Step 7 and user approval for any remote schema access.
 
 ### Step 9 — Add reproducible local database and database tests
 
-Status: READY_FOR_COMMIT
+Status: DONE
 
 Acceptance criteria:
 

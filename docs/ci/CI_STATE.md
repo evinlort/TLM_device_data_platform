@@ -5,21 +5,25 @@
 - Branch: `ci/github-actions-foundation`.
 - Starting HEAD for Step 9:
   `632643d755c3758d334281994feae305ec9c6855`.
+- Step 9 implementation commit:
+  `2e46cd6baf5dc013a64b3c0fdde54e34acb11f01`.
+- The commit containing this file finalizes the Step 9 handoff; use
+  `git rev-parse HEAD` for its exact SHA without creating a self-referential
+  state update.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: public `evinlort/TLM_device_data_platform` with `main` as
   the default branch. Public visibility is intentional.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open, mergeable, and points from `ci/github-actions-foundation` to `main`.
-- Working tree: contains only the reviewed, uncommitted Step 9 implementation
-  and handoff changes described below.
+- Working tree: contains only the reviewed, uncommitted final Step 9 handoff
+  update after remote validation.
 
 ## Current milestone
 
 - Step: Step 9 — Add reproducible local database and database tests.
-- Status: READY_FOR_COMMIT.
-- Completion blockers: explicit user approval to commit and push; after push,
-  successful Pull Request workflow verification and artifact inspection.
+- Status: DONE.
+- Completion blockers: none.
 
 ## Verified starting state
 
@@ -132,6 +136,27 @@ does not define Product ordering, and `body` remains opaque.
   string, credential, token, or password appears in the Step 9 source changes.
 - Final `git diff --check` and untracked-file whitespace validation after the
   persistent handoff update: PASS.
+
+## Remote Step 9 validation
+
+- Commit: `2e46cd6baf5dc013a64b3c0fdde54e34acb11f01`.
+- Local HEAD, remote-tracking branch, and Pull Request head matched that commit
+  after push.
+- Pull Request #1 remained open, non-draft, and mergeable.
+- Workflow: `CI`, run ID `36777217649`, run number `19`, conclusion `success`.
+- Job: `Python 3.11`, ID `110098037814`; checkout, Python setup, locked install,
+  `pip check`, pytest, result validation, artifact upload, and all post steps
+  completed with conclusion `success`.
+- Artifact: `pytest-results-python-3.11`, ID `11125259470`, `1489` archive
+  bytes, not expired when inspected. GitHub reports digest
+  `sha256:6d67301a53cd2005040400c5268eb28049d442ee3a6d9d8d9bef9c0b7e36793b`.
+- The downloaded artifact contains exactly two non-empty files:
+  `pytest.xml` (`3481` bytes) and `pytest.log` (`961` bytes).
+- Downloaded JUnit XML: `22` tests, `0` failures, `0` errors, `0` skipped.
+- Downloaded pytest log: PASS; final summary is `22 passed in 0.22s`.
+- This unchanged workflow does not yet exercise Supabase. The database job is
+  intentionally deferred to Step 10; Step 9's two official local Supabase
+  cycles remain the database-specific validation evidence.
 
 ## Required CI
 

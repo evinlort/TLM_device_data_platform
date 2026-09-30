@@ -3142,3 +3142,38 @@ Step 9 ещё не считается `DONE`: commit и push требуют яв
 проверить каждый required job и скачать его test-results artifact. Только после
 этого handoff можно финализировать как удалённо подтверждённый Step 9. В этой
 сессии Step 10 не начинается.
+
+### Удалённая проверка и завершение шага
+
+После явного разрешения пользователя весь reviewed Step 9 был зафиксирован
+commit `2e46cd6baf5dc013a64b3c0fdde54e34acb11f01`
+(`ci: add reproducible local database baseline`) и отправлен в branch
+`ci/github-actions-foundation`. Local HEAD, remote-tracking branch и Pull
+Request head совпали. Pull Request #1 остался open, non-draft и mergeable.
+
+Push запустил workflow `CI`, run ID `36777217649`, run number `19`, точно на
+этом commit. Job `Python 3.11`, ID `110098037814`, завершился с conclusion
+`success`. Отдельная проверка job metadata подтвердила successful checkout,
+Python setup, locked install, `pip check`, pytest, result-file validation,
+artifact upload и post steps.
+
+Run опубликовал неистёкший artifact `pytest-results-python-3.11`, ID
+`11125259470`, размером `1489` archive bytes. GitHub сообщил digest
+`sha256:6d67301a53cd2005040400c5268eb28049d442ee3a6d9d8d9bef9c0b7e36793b`.
+Artifact был скачан и проверен после завершения run. В нём находятся ровно два
+ожидаемых непустых файла:
+
+- `pytest.xml` — `3481` bytes, `22` tests, `0` failures, `0` errors,
+  `0` skipped;
+- `pytest.log` — `961` bytes и итог `22 passed in 0.22s`.
+
+Эта remote проверка доказывает, что Step 9 commit не нарушил существующий
+required Python CI и artifact contract на clean GitHub-hosted runner. Workflow
+намеренно пока не поднимает Supabase: database-specific evidence этого шага —
+два уже выполненных official local reset/test cycles по `18/18`. Перенос того
+же lifecycle в GitHub Actions является ровно задачей Step 10.
+
+После successful remote run и artifact inspection Step 9 переведён в `DONE`.
+Текущий documentation-only handoff готов к отдельному approved commit/push.
+Он не начинает Step 10, не меняет workflow, schema или remote Supabase state и
+только сохраняет проверенные commit/run/artifact facts для следующей сессии.
