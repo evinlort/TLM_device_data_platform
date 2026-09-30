@@ -114,7 +114,7 @@ Dependencies: Step 4.
 
 ### Step 5 — Add duplicate, offline, and reconnect scenarios
 
-Status: READY_FOR_COMMIT
+Status: DONE
 
 Acceptance criteria:
 

@@ -1798,3 +1798,43 @@ artifact.
 Удалённая проверка Step 5 пока намеренно не заявлена: она возможна только после
 явного разрешения пользователя на commit и push. До этого момента Step 5 не
 имеет статус `DONE`.
+
+### Удалённая проверка и завершение шага
+
+После явного разрешения пользователя реализация и подготовленный handoff были
+зафиксированы commit `f893661` (`test: add deterministic delivery scenarios`)
+и отправлены в `ci/github-actions-foundation`.
+
+Push запустил GitHub Actions workflow `CI`, run ID `36721698288`, run number
+`11`, для полного commit SHA
+`f89366151dc7b913feb6d77bef776b960a575a88`. Job `Python 3.11` завершился с
+conclusion `success`. Через GitHub connector отдельно подтверждено, что каждый
+step, включая checkout, Python setup, locked installation, `pip check`, pytest,
+result-file validation и artifact upload, имеет conclusion `success`.
+
+Первый ответ прямого jobs API уже показывал завершённый successful job, но два
+вложенных step summary временно оставались в состоянии `in_progress`. Это было
+расценено как несогласованное промежуточное представление API, а не как
+доказательство завершения. Повторная проверка через GitHub connector вернула
+полный список, где все steps были `completed/success`; только после этого
+remote job validation была принята.
+
+Run опубликовал artifact `pytest-results-python-3.11`, ID `11098952143`,
+размером `1254` archive bytes. Artifact был скачан через подключённый GitHub
+доступ во временный каталог. SHA-256 скачанного ZIP
+`f5eb6b10322b29f799f64eb94cf6eb64cc759f7cae3684533b56325e671f738c`
+точно совпал с digest GitHub. `unzip -t` подтвердил целостность архива.
+
+Внутри находились ровно два ожидаемых непустых файла:
+
+- `pytest.xml` — `2642` bytes, `16` tests, `0` failures, `0` errors,
+  `0` skipped;
+- `pytest.log` — `801` bytes и итог `16 passed`.
+
+Удалённая проверка доказывает, что Step 5 проходит на чистом GitHub-hosted
+runner с тем же locked environment и что существующий Step 4.5 artifact flow
+без изменений публикует результаты расширенного suite. После успешного run и
+inspection `CI_PLAN.md` и `CI_STATE.md` переведены в `DONE`.
+
+Следующим остаётся Step 6. Его реализация в этой сессии не начиналась и должна
+стартовать только в новой сессии через `docs/ci/BOOTSTRAP_PROMPT.md`.

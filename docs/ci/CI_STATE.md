@@ -3,10 +3,11 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Verified starting HEAD for Step 5:
-  `33b61371869a15bdf8480638e6d7eb8895784964`.
-- Remote branch `origin/ci/github-actions-foundation` resolved to the same SHA
-  before Step 5 changes.
+- Step 5 implementation commit:
+  `f89366151dc7b913feb6d77bef776b960a575a88`.
+- The commit containing this file finalizes the Step 5 handoff; use
+  `git rev-parse HEAD` for its exact SHA without creating a self-referential
+  state update.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: public `evinlort/TLM_device_data_platform` with `main` as
@@ -16,23 +17,22 @@
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open from `ci/github-actions-foundation` to `main`.
 - GitHub Actions
-  [CI #10](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36709494100)
-  completed successfully for the verified starting HEAD. Its `Python 3.11`
-  job completed locked installation, dependency checking, pytest, result-file
-  validation, and artifact upload successfully.
-- Step 4.5 artifact `pytest-results-python-3.11`, ID `11093152151`, was
-  downloaded and inspected again before Step 5. Its GitHub digest and the
-  downloaded ZIP SHA-256 both equal
-  `f2aa0cf4a9aaabe41d6f4308f9b2fe28fc9c308e8010b744ee3838bbf087639e`.
-- Working tree: contains the reviewed and locally validated Step 5 changes;
-  they are not committed or pushed pending explicit user approval.
+  [CI #11](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36721698288)
+  completed successfully for the Step 5 implementation commit. Its
+  `Python 3.11` job completed locked installation, dependency checking,
+  pytest, result-file validation, and artifact upload successfully.
+- Step 5 artifact `pytest-results-python-3.11`, ID `11098952143`, was
+  downloaded and inspected. Its GitHub digest and the downloaded ZIP SHA-256
+  both equal
+  `f5eb6b10322b29f799f64eb94cf6eb64cc759f7cae3684533b56325e671f738c`.
+- Working tree: expected to be clean after the approved final Step 5 handoff
+  commit.
 
 ## Current milestone
 
 - Step: Step 5 — Add duplicate, offline, and reconnect scenarios.
-- Status: READY_FOR_COMMIT.
-- Completion blockers: explicit commit/push approval, then successful Pull
-  Request workflow verification and inspection of the Step 5 artifact.
+- Status: DONE.
+- Completion blockers: none.
 
 ## Verified facts
 
@@ -100,10 +100,18 @@ contract were not changed.
 
 Remote Step 5 validation:
 
-- PENDING until the user approves commit and push.
-- The Step 5 Pull Request run must complete successfully and its published
-  `pytest-results-python-3.11` artifact must be downloaded and inspected before
-  Step 5 can be marked DONE.
+- Workflow: `CI`, run ID `36721698288`, run number `11`.
+- Commit: `f89366151dc7b913feb6d77bef776b960a575a88`.
+- Job: `Python 3.11`; every job step completed with conclusion `success`.
+- Artifact: `pytest-results-python-3.11`, ID `11098952143`, `1254` archive
+  bytes, not expired when inspected.
+- GitHub-reported and downloaded ZIP SHA-256 both equal
+  `f5eb6b10322b29f799f64eb94cf6eb64cc759f7cae3684533b56325e671f738c`.
+- The downloaded ZIP passed archive integrity validation and contained exactly
+  the expected non-empty `pytest.xml` (`2642` bytes) and `pytest.log` (`801`
+  bytes).
+- Downloaded JUnit XML: `16` tests, `0` failures, `0` errors, `0` skipped.
+- Downloaded pytest log: PASS; it contains the `16 passed` summary.
 
 ## Current CI
 
@@ -156,10 +164,9 @@ not require changes.
 ## Next step
 
 - Step: Step 6 — Add ordering, stream, and late-data scenarios.
-- Step 6 is not activated while Step 5 is `READY_FOR_COMMIT`.
-- After approved commit/push, successful Pull Request CI, artifact download
-  and inspection, and a final Step 5 handoff update, Step 6 must start in a
-  new Codex session.
+- Step 5 is committed, pushed, successful in the Pull Request workflow, and
+  its published artifact has been downloaded and inspected.
+- Step 6 must start in a new Codex session.
 
 Use `docs/ci/BOOTSTRAP_PROMPT.md` for that new session. Do not start Step 6 in
 this session.
