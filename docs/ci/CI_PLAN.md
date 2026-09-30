@@ -154,7 +154,7 @@ Dependencies: Steps 4-6 and relevant application architecture.
 
 ### Step 8 — Define the Supabase schema bootstrap strategy
 
-Status: NOT_STARTED
+Status: READY_FOR_COMMIT
 
 Acceptance criteria:
 
@@ -162,6 +162,19 @@ Acceptance criteria:
 - Verify current official Supabase CLI guidance.
 - Explain migration/bootstrap strategy before schema pull or implementation.
 - Perform no destructive operation against production.
+
+Implementation summary:
+
+- Repository inspection found no schema/configuration source and no authorized
+  remote schema source.
+- Stable Supabase CLI `2.118.0` is pinned as a project-scoped development tool
+  with Node.js 20 or later and a committed npm lock file.
+- `docs/ci/SUPABASE_SCHEMA_BOOTSTRAP.md` defines migrations as the future
+  source of truth, the authorized remote/greenfield bootstrap paths, local
+  rebuild contract, credential boundaries, and prohibited remote mutations.
+- No `supabase/config.toml`, migration, seed, table, role, RLS policy, remote
+  link, schema pull, Docker service, or database operation was created without
+  a verified schema source.
 
 Dependencies: Step 7 and user approval for any remote schema access.
 
@@ -176,7 +189,8 @@ Acceptance criteria:
 - Record authorization cases blocked by unresolved Product decisions rather
   than inventing policies.
 
-Dependencies: Step 8 and relevant Product decisions.
+Dependencies: committed and remotely verified Step 8, plus an explicitly
+authorized existing schema source or confirmed greenfield schema requirements.
 
 ### Step 10 — Add the local integration CI job
 

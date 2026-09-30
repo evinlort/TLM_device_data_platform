@@ -2,18 +2,26 @@
 
 ## Activation condition
 
-Step 8 may start only after Step 7 is committed, pushed, successful in the
-Pull Request workflow, and the published test-results artifact has been
-downloaded and inspected. Before any Step 8 change, verify that the actual
-branch, HEAD, remote, clean working tree, Pull Request, latest required CI
-result, artifact listing, and downloaded artifact agree with
-`docs/ci/CI_STATE.md`. If Step 7 changes are still uncommitted, its remote
-check is pending or failed, or its artifact has not been inspected, finish or
-investigate Step 7 instead of starting Step 8.
+Step 9 may start only after Step 8 is committed, pushed, successful in the Pull
+Request workflow, and the published test-results artifact has been downloaded
+and inspected. Verify the actual branch, HEAD, remote, clean working tree, Pull
+Request, latest required CI result, artifact listing, and downloaded artifact
+against `docs/ci/CI_STATE.md` before any change.
+
+Step 9 also requires one of these inputs:
+
+1. explicit user authorization identifying an existing Supabase project and
+   environment whose schema may be inspected and captured; or
+2. confirmed greenfield schema requirements sufficient to author the first
+   migration without inventing Product semantics.
+
+If neither input exists, stop and request the missing source-of-truth decision.
+Do not create placeholder production tables, roles, RLS policies, or database
+tests.
 
 ## Step
 
-Step 8 — Define the Supabase schema bootstrap strategy
+Step 9 — Add a reproducible local database and confirmed database tests
 
 ## Read first
 
@@ -22,81 +30,72 @@ Step 8 — Define the Supabase schema bootstrap strategy
 3. `docs/ci/CI_PLAN.md`
 4. `docs/ci/NEXT_SESSION.md`
 5. `docs/ci/DECISIONS.md`
-6. `docs/ci/FLOW_EXPLANATIONS.md`
+6. `docs/ci/SUPABASE_SCHEMA_BOOTSTRAP.md`
+7. `docs/ci/FLOW_EXPLANATIONS.md`
 
 Additional files relevant to this step:
 
+- `package.json`
+- `package-lock.json`
+- `.github/workflows/ci.yml`
 - `src/tlm_device_data_platform/local_integration.py`
 - `tests/test_local_integration.py`
-- `.github/workflows/ci.yml`
-- `pyproject.toml`
-- `requirements/test.txt`
 
-Inspect any Supabase/schema/configuration files that exist at the start of the
-session. Do not read unrelated future files unless the current step requires
-them.
+Inspect any Supabase/schema files that exist at the start of the session. Do
+not read unrelated future files unless the current step requires them.
 
 ## Goal
 
-Determine and document a safe, reproducible strategy for establishing a
-version-controlled local Supabase/PostgreSQL schema from the repository and
-any explicitly authorized schema source, without destructive production
-operations or invented Product authorization/data semantics.
+Establish a version-controlled Supabase/PostgreSQL configuration and real
+baseline migration from an authorized source, then prove that a disposable
+local database can be rebuilt from Git and run only database tests supported by
+confirmed requirements.
 
-## Current verified starting point
+## Required approach
 
-- Required CI has a provider-independent `StorageAdapter`, an opaque WSGI API,
-  and deterministic real-loopback/local-filesystem integration coverage.
-- Device-facing `Transport` and API/storage boundaries contain no Supabase
-  URLs, credentials, tables, or schema details.
-- No Supabase configuration, migration, PostgreSQL schema, database test, CLI
-  dependency, or local database job exists.
-- Product telemetry, identity, authorization, RLS, retention, idempotency,
-  ordering, and persistence semantics remain open.
+- Follow `docs/ci/SUPABASE_SCHEMA_BOOTSTRAP.md`.
+- Use the exact project-scoped Supabase CLI version already locked in npm.
+- For a remote source, identify and re-confirm the exact project, environment,
+  schema scope, PostgreSQL major version, and allowed commands before linking
+  or pulling.
+- Explain the target and effect before every remote command.
+- Keep credentials, passwords, connection strings, `.temp` state, and remote
+  identifiers out of commits and artifacts unless a non-secret identifier is
+  explicitly approved for version control.
+- Review generated configuration and SQL before local application.
+- Use only disposable local services for rebuild and tests.
 
-## Allowed scope
+## Out of scope and safety limits
 
-- Inspect repository schema/configuration sources and any remote source the
-  user explicitly authorizes.
-- Verify current official Supabase CLI and local-development guidance.
-- Explain and record the migration/bootstrap strategy before any schema pull
-  or implementation.
-- Add only the minimal non-destructive bootstrap configuration justified by
-  verified facts and the exact Step 8 strategy.
-- CI handoff updates and validation required by this step.
-
-## Out of scope
-
-- Destructive production or remote database operations.
-- Inventing tables, columns, credentials, roles, RLS, authorization, retention,
-  idempotency, ordering, or conflict-resolution rules.
-- Step 9 local database rebuild/tests and Step 10 integration CI job.
-- Production deployment, branch protection, caching, lint, type checking,
-  coverage thresholds, performance, scale, or SLO claims.
-
-## Required investigation
-
-- Reconfirm repository, Pull Request, CI, and artifact state before changes.
-- Determine whether any repository or explicitly authorized remote schema
-  source exists at that time.
-- Verify current official Supabase CLI installation, initialization, local
-  development, migration, schema pull, and safety guidance.
-- Explain the proposed source of truth and bootstrap/rebuild flow before
-  running any schema command.
-- Stop for explicit user authorization before accessing a remote schema or
-  performing any operation whose target or destructive effect is unclear.
+- Never run `supabase db reset --linked` against production.
+- Do not run `db push`, `migration repair`, accept a remote-history update, or
+  perform any other remote mutation without separate explicit authorization.
+- Do not invent tables, columns, roles, grants, RLS, authorization, retention,
+  idempotency, ordering, conflict-resolution, or seed semantics.
+- Do not add the Step 10 integration CI job in this session.
+- Do not deploy, merge the Pull Request, configure branch protection, or add
+  unrelated caching, lint, typing, coverage, scale, or SLO policy.
 
 ## Validation
 
-Validate every configuration or documentation change that Step 8 actually
-introduces. Preserve the locked Python checks and full pytest suite, confirm
-that required CI still has no production service or secret dependency, verify
-installed-package imports where relevant, confirm the test-result artifact
-contract, and run `git diff --check`. After approved commit and push, verify
-the updated Pull Request workflow and inspect its published artifact.
+Validate every file introduced by the authorized schema source. At minimum:
+
+- clean `npm ci` and exact CLI version;
+- local stack startup without production secrets;
+- clean local rebuild from version-controlled migrations;
+- confirmed database tests, if requirements exist;
+- reliable local cleanup;
+- locked Python reinstall, `pip check`, and full pytest suite;
+- installed-package import where relevant;
+- preservation of the pytest artifact contract;
+- scan for secrets, production dependencies, and untracked generated state;
+- `git diff --check` and untracked-file whitespace validation.
+
+After approved commit and push, verify the updated Pull Request workflow and
+inspect its published artifact.
 
 ## Stop condition
 
-After Step 8 strategy/configuration, validation, state update, approved
-commit/push, successful Pull Request workflow verification, and artifact
-inspection. Do not start Step 9 in the same session.
+Stop after Step 9 implementation, validation, persistent handoff update,
+approved commit/push, successful Pull Request workflow verification, and
+artifact inspection. Do not start Step 10 in the same session.

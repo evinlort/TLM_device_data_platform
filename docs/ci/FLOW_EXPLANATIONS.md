@@ -2541,3 +2541,308 @@ queue, HTTP, API и filesystem storage и завершиться детерми�
 переведены в `DONE`. Следующим остаётся Step 8 — Supabase schema bootstrap
 strategy. Его реализация в этой сессии не начиналась и должна стартовать только
 в новой сессии через `docs/ci/BOOTSTRAP_PROMPT.md`.
+
+---
+
+## Step 8 — Стратегия bootstrap Supabase/PostgreSQL schema
+
+### Короткий итог
+
+Step 8 определил безопасный путь от отсутствующей database schema к
+воспроизводимой локальной Supabase/PostgreSQL database, не создавая выдуманных
+таблиц и не обращаясь к production. Репозиторий получил project-scoped
+Supabase CLI `2.118.0`, закреплённый точной npm-версией и lock-файлом, а также
+отдельный документ `docs/ci/SUPABASE_SCHEMA_BOOTSTRAP.md`.
+
+Version-controlled source of truth после появления авторизованного источника
+будет состоять из ordered SQL migrations в `supabase/migrations/`. Для уже
+существующего remote проекта baseline разрешено получать только после явного
+подтверждения точного target и schema scope. Для greenfield database первая
+migration может содержать только подтверждённые Product/architecture
+requirements.
+
+На этом шаге намеренно не появились `supabase/config.toml`, migration, seed,
+таблицы, роли или RLS. Это не незавершённая реализация: в репозитории нет
+schema source, а пользователь не разрешал remote schema access. Создание
+placeholder schema нарушило бы запрет на выдумывание Product semantics.
+
+### Почему этот шаг был нужен
+
+Step 7 доказал provider-independent поток от device queue через реальный local
+HTTP к `StorageAdapter`, но storage implementation оставался временным
+filesystem adapter. Следующие milestones должны заменить эту test boundary
+локальной database и затем включить её в CI.
+
+Нельзя было сразу перейти к `supabase start` и `db reset`. Эти команды имеют
+содержательный смысл только тогда, когда Git уже содержит проверенную
+конфигурацию и реальные migrations. До Step 8 отсутствовали:
+
+- `supabase/config.toml`;
+- `supabase/migrations/`;
+- declarative schema files;
+- seed data;
+- database tests;
+- Supabase CLI dependency;
+- подтверждённый remote project или greenfield schema;
+- решения о tables, columns, roles, RLS, retention и conflict handling.
+
+Главной задачей было определить не SQL, а безопасный способ получить SQL,
+сделать его reviewable и затем воспроизводить database только из Git.
+
+### Сверка исходного состояния
+
+Перед изменениями были проверены локальные branch, HEAD, remote, clean working
+tree и remote Pull Request. Локальный и remote PR head совпали на
+`11a96b308aa26a067cd2aeb995662f06f9c35471`; PR #1 оставался открытым и
+mergeable.
+
+`CI_STATE.md` подробно фиксировал Step 7 implementation run #15. Дополнительно
+был найден более новый run #16, ID `36747992035`, относящийся к финальному
+handoff commit Step 7. Его `Python 3.11` job и все steps завершились с
+`success`.
+
+Artifact run #16 `pytest-results-python-3.11`, ID `11112439370`, был повторно
+скачан через GitHub connector. Его SHA-256
+`92a56afc6382c97df635277829ba29234d32c844dce03f84f71d7a4d9344b69c`
+совпал с GitHub digest. ZIP прошёл integrity check и содержал ровно
+`pytest.xml` размером `3481` bytes и `pytest.log` размером `961` bytes. Log
+сообщил `22 passed`, а JUnit — `22` tests без failures, errors и skipped.
+Поэтому Step 8 начался с фактически проверенного final Step 7 head.
+
+### Исследование repository schema sources
+
+Полный список файлов и поиск по Supabase/PostgreSQL/schema/database terms
+подтвердили отсутствие database implementation. Единственные упоминания schema
+находились в test-only telemetry fixture и CI-документации. Они не являются SQL
+schema source.
+
+`TemporaryDirectoryStorage` принимает opaque `bytes` и пишет локальные binary
+files. В нём нет table name, SQL, Supabase client или данных, из которых можно
+однозначно вывести production database model. Поэтому он не использовался как
+schema prototype.
+
+Remote Supabase project также не был исследован. Пользователь не указал project
+reference, environment или разрешённый schema scope и не давал явного
+разрешения на remote access. Step 8 сохранил эту границу.
+
+### Проверенная официальная модель Supabase CLI
+
+Актуальные официальные материалы Supabase были проверены 2026-09-30. Они
+подтвердили следующие технические факты:
+
+- CLI можно хранить как project dev dependency и следует закреплять одной
+  версией для команды;
+- npm/npx-вариант требует Node.js 20 или новее;
+- `supabase init` создаёт каталог `supabase/` и `config.toml`;
+- local stack требует Docker-compatible runtime;
+- migrations хранятся в `supabase/migrations/`;
+- `supabase db reset` пересоздаёт local database и применяет migrations и seed;
+- `supabase db pull` создаёт migration из remote schema, требует link или
+  явный database URL и запускает local shadow Postgres container;
+- текущий `db pull` может предложить обновить remote migration history;
+- после bootstrap обычные schema changes должны идти через migrations, а не
+  через прямое редактирование shared remote database.
+
+Официальный GitHub latest-stable endpoint сообщил `v2.118.0`, опубликованный
+2026-09-25 и не помеченный prerelease. Поэтому выбрана exact version
+`2.118.0`, а не mutable `latest`, range или beta build.
+
+### Почему добавлен npm toolchain
+
+`package.json` имеет только техническое назначение:
+
+```json
+{
+  "private": true,
+  "engines": { "node": ">=20" },
+  "devDependencies": { "supabase": "2.118.0" }
+}
+```
+
+`private: true` защищает вспомогательный tooling package от случайной
+публикации. Exact version устраняет плавающее обновление CLI. `package-lock.json`
+фиксирует разрешённые npm packages и integrity hashes, а `npm ci` даёт clean
+installation path. `node_modules/` добавлен в `.gitignore` как generated local
+state.
+
+Node не стал runtime dependency Python package. `pyproject.toml` и
+`requirements/test.txt` не изменились. CLI пока не включён в required workflow:
+Step 8 проверяет стратегию и tool bootstrap, а Docker/database job относится к
+Step 9/10 после появления реальной schema.
+
+### Почему не был committed `supabase/config.toml`
+
+Перед принятием решения `npx supabase@2.118.0 init` был запущен только во
+временном `/tmp` directory. Команда успешно создала текущий generated
+`config.toml`, но файл содержал не только local project ID. В нём присутствовали
+PostgreSQL major version и многочисленные API, Auth, Storage, Realtime, Studio,
+SMTP и другие defaults.
+
+Документация самого config указывает, что PostgreSQL major version должен
+соответствовать remote database. Remote version неизвестна. Остальные defaults
+являются лишь возможной local test configuration и могут быть ошибочно приняты
+за подтверждённые product settings.
+
+Поэтому generated config не копировался в repository и не сокращался вручную.
+Он будет создан locked CLI только тогда, когда remote facts или approved
+greenfield requirements позволят review каждого сохранённого значения. Такой
+подход меньше по scope и точнее, чем commit большого файла с непроверенными
+параметрами.
+
+### Source of truth и два bootstrap-пути
+
+Durable решение `CI-DEC-012` фиксирует ordered SQL migrations как будущий
+database source of truth.
+
+Для существующего remote project поток выглядит так:
+
+```text
+user authorizes exact project/environment and schema scope
+  -> verify remote PostgreSQL major version and allowed commands
+  -> npm ci installs Supabase CLI 2.118.0
+  -> locked CLI creates local config
+  -> generated config is reviewed against verified facts
+  -> authenticate and link without committing credentials or .temp state
+  -> db pull captures the approved schema scope
+  -> do not accept migration-history mutation without separate approval
+  -> review generated SQL, grants, policies, functions, triggers and omissions
+  -> remove remote credentials from the working flow
+  -> rebuild a disposable local database from Git
+  -> run only confirmed database tests
+  -> commit after user approval
+```
+
+Для greenfield project поток другой:
+
+```text
+Product/architecture approves schema requirements
+  -> initialize local project with locked CLI
+  -> create a named migration
+  -> author only approved SQL
+  -> label seed values as test data
+  -> rebuild a disposable local database
+  -> test only confirmed requirements
+  -> commit after user approval
+```
+
+Оба пути сходятся в одной точке: clean local rebuild должен работать только из
+version-controlled files и не требовать production secret.
+
+### Граница remote safety
+
+`db pull` рассматривается не как безусловно read-only операция. Текущая
+официальная reference показывает интерактивный шаг, который может repair/update
+remote migration history. Поэтому перед pull требуется разрешение не только на
+доступ, но и на точный target; любое предложение изменить remote history
+останавливает поток до отдельного подтверждения.
+
+`db push`, `migration repair` и accepted remote-history update являются
+remote mutations и не входят в discovery. `db reset --linked` отдельно
+запрещён для production и никогда не будет автоматизирован. Credentials,
+passwords, connection strings и generated `.temp` state не должны попадать в
+Git или test artifacts.
+
+### Что происходило во время реализации
+
+#### Локальный `gh` по-прежнему не запускался
+
+Snap/AppArmor снова отклонил запуск GitHub CLI. Дополнительно sandbox не имел
+DNS для обычного `git ls-remote`. Это не было расхождением repository state.
+Публичные PR/run/artifact metadata были проверены read-only GitHub API, а
+authenticated artifact download выполнен через GitHub connector.
+
+#### Первый artifact download без credentials получил `401`
+
+Metadata публичного artifact доступна без authentication, но ZIP download
+потребовал авторизацию. Попытка без credentials была остановлена ответом `401`;
+никакое состояние GitHub не изменилось. Connector вернул временную download
+reference, после чего ZIP был скачан в `/tmp` и полностью проверен.
+
+#### Первая sandboxed `npm ci` оставила неполный `node_modules`
+
+Команда в restricted environment завершилась без установленной `.bin/supabase`,
+и последующая проверка честно получила `supabase: not found`. Это не было
+обойдено использованием глобальной CLI. Та же clean command была повторена с
+разрешённым network access. Она установила locked graph, после чего
+`npx supabase --version` вернул `2.118.0`.
+
+#### Generated test results появились как untracked files
+
+Workflow-equivalent локальный pytest создал `test-results/pytest.xml` и
+`test-results/pytest.log`. Эти файлы являются generated validation output и в
+GitHub публикуются как artifact, а не source. `test-results/` добавлен в
+`.gitignore`, чтобы локальный результат не попал в commit случайно. Artifact
+contract workflow при этом не изменился.
+
+### Проверка и что она доказывает
+
+Toolchain validation использовала Node `v22.23.2` и npm `10.9.8`:
+
+- clean `npm ci`: PASS;
+- npm audit во время install: `0 vulnerabilities`;
+- `npx supabase --version`: `2.118.0`;
+- `npm ls --depth=0`: единственная direct dependency
+  `supabase@2.118.0`;
+- JSON assertions: package private, Node baseline `>=20`, manifest и lock
+  фиксируют одинаковую exact CLI version.
+
+Python regression validation на Python `3.11.9`:
+
+- locked wheel rebuild/reinstall: PASS;
+- `pip check`: PASS (`No broken requirements found`);
+- полный workflow-equivalent suite через real loopback HTTP: PASS
+  (`22 passed`);
+- JUnit: `22` tests, `0` failures, `0` errors, `0` skipped;
+- pytest XML и readable log непусты;
+- import из `/tmp`: PASS, `local_integration.py` загружен из установленного
+  `site-packages`.
+
+Static validation подтвердила:
+
+- `supabase/` directory отсутствует;
+- в изменениях нет remote project URL, database password, service-role key,
+  connection string или secret reference;
+- required workflow по-прежнему не использует `pull_request_target`, Docker,
+  production service или secret;
+- workflow сохраняет always-run validation/upload двух pytest result files;
+- `AGENTS.md` по-прежнему указывает на `BOOTSTRAP_PROMPT.md`;
+- `git diff --check` и отдельная проверка untracked files проходят.
+
+Эти проверки доказывают воспроизводимость CLI tool version и отсутствие
+регрессии текущих 22 tests. Они не доказывают database rebuild: schema и
+configuration намеренно ещё не существуют.
+
+### Что сознательно осталось вне Step 8
+
+Step 8 не выполнял и не определял:
+
+- Supabase login или link;
+- remote schema inspection или pull;
+- `supabase/config.toml`;
+- migration, declarative schema или seed;
+- PostgreSQL major version проекта;
+- table, column, primary/foreign key или unique constraint;
+- roles, grants, RLS или authorization split;
+- retention, idempotency, ordering или conflict resolution;
+- Docker/local Supabase startup;
+- local database reset или database tests;
+- `db push`, `migration repair` или production operation;
+- Step 10 integration CI job;
+- deployment, branch protection или Pull Request merge.
+
+Для Step 9 требуется новый вход: явно разрешённый существующий schema source
+либо подтверждённые greenfield schema requirements. Если его нет, новая сессия
+должна остановиться и запросить решение, а не создавать placeholder production
+model.
+
+### Состояние перед commit approval
+
+Стратегия, locked CLI toolchain, validation и persistent handoff подготовлены
+локально. `CI_PLAN.md` и `CI_STATE.md` имеют статус `READY_FOR_COMMIT`.
+`NEXT_SESSION.md` описывает только Step 9 и запрещает начинать его до approved
+commit/push Step 8, successful Pull Request workflow, artifact inspection и
+появления авторизованного schema source.
+
+Удалённая проверка Step 8 пока намеренно не заявлена: она возможна только после
+явного разрешения пользователя на commit и push. До этого Step 8 не получает
+статус `DONE`.

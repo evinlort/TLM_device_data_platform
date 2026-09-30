@@ -383,3 +383,48 @@ Source:
 Step 7 local HTTP/storage integration implementation and the existing
 `CI-DEC-001`, `CI-DEC-002`, `CI-DEC-007`, `CI-DEC-008`, `CI-DEC-009`, and
 `CI-DEC-010` constraints.
+
+## CI-DEC-012 — Migration-backed Supabase schema bootstrap
+
+Status: ACCEPTED
+
+Decision:
+
+Use ordered SQL files in `supabase/migrations/` as the version-controlled
+database source of truth once an authorized schema source exists. Pin the
+project-scoped Supabase CLI exactly and generate `supabase/config.toml` only
+when verified remote facts or approved greenfield requirements can be applied.
+For an existing remote project, capture one reviewed baseline through an
+explicitly authorized `db pull`; for a greenfield project, author only
+Product-approved SQL. Validate either path by rebuilding a disposable local
+database before any remote deployment.
+
+Reason:
+
+Step 8 found no repository schema and no explicitly authorized remote schema
+source. Current `supabase init` output includes PostgreSQL, Auth, API, Storage,
+and other defaults that could be mistaken for verified project settings.
+Creating configuration or an empty invented migration now would therefore
+record unverified facts without making the database reproducible.
+
+Consequences:
+
+- Supabase CLI `2.118.0` is an exact npm development dependency and Node.js 20
+  or later is the tool runtime baseline.
+- `supabase/config.toml`, baseline migrations, seeds, and database tests remain
+  absent until a real authorized schema source exists.
+- Remote credentials, passwords, connection strings, and generated `.temp`
+  state are never committed or published as CI artifacts.
+- `db pull` requires explicit target authorization because current CLI behavior
+  may offer to update remote migration history.
+- `db push`, `migration repair`, and accepted remote-history updates are
+  separate remote mutations and require separate authorization.
+- `db reset --linked` is prohibited for production and must never be automated.
+- Required Pull Request CI must rebuild only disposable local services and must
+  not depend on a production Supabase project or secret.
+
+Source:
+
+Step 8 repository inspection, official Supabase CLI/local-development and
+database-migration guidance verified on 2026-09-30, and the safety constraints
+in the TLM CI master prompt.

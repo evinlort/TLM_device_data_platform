@@ -1,0 +1,10 @@
+{
+  "name": "tlm-device-data-platform-tools",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "supabase": "2.118.0"
+  }
+}
