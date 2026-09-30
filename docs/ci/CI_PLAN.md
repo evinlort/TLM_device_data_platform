@@ -96,7 +96,7 @@ Dependencies: Step 3.
 
 ### Step 4.5 — Publish test result artifacts
 
-Status: NOT_STARTED
+Status: READY_FOR_COMMIT
 
 Acceptance criteria:
 

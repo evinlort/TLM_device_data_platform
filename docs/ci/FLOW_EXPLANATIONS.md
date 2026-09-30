@@ -1114,3 +1114,287 @@ production services.
 После успешного run `CI_PLAN.md` и `CI_STATE.md` переведены из
 `READY_FOR_COMMIT` в `DONE`. Следующим шагом остаётся Step 4.5; никакая его
 реализация в этой сессии не выполнялась.
+
+---
+
+## Step 4.5 — Публикация результатов тестов
+
+### Короткий итог
+
+Step 4.5 расширил единственный Pull Request job двумя сохраняемыми
+представлениями результата pytest: machine-readable JUnit XML
+`test-results/pytest.xml` и human-readable log
+`test-results/pytest.log`. Оба файла загружаются в artifact
+`pytest-results-python-3.11` даже после падения тестов. При этом код возврата
+pytest не заменяется кодом `tee`, а отсутствие или пустота любого ожидаемого
+файла превращается в явную ошибку workflow.
+
+Для upload используется официальный `actions/upload-artifact@v7.0.1`,
+закреплённый по полному upstream commit SHA
+`043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`. `retention-days` намеренно не
+задан: применяется repository-default artifact retention, которая не имеет
+отношения к ещё открытому продуктовому решению о сроке хранения telemetry.
+
+### Почему этот шаг был нужен
+
+До Step 4.5 результат `python -m pytest` был виден только в live/job log
+GitHub Actions. Этого достаточно для простого ответа «job зелёный или
+красный», но недостаточно для устойчивой диагностики и последующей
+автоматической обработки:
+
+- инструменты не получали стандартный JUnit XML с отдельными testcase;
+- человеку приходилось искать pytest output среди всех install/check steps;
+- после завершения run не существовало одного скачиваемого пакета результатов;
+- failure path не доказывал, что диагностические данные сохраняются, когда они
+  нужны больше всего.
+
+Одновременно нельзя было ослабить основной quality gate. Наивный pipeline
+`python -m pytest | tee pytest.log` обычно возвращает status последней команды,
+то есть успешного `tee`, и способен показать зелёный test step при упавшем
+pytest. Поэтому публикация отчетов должна была быть добавлена вместе с явным
+сохранением статуса первого process в pipeline.
+
+### Исходное состояние
+
+Перед изменениями были сверены локальное и удалённое состояния:
+
+- ветка `ci/github-actions-foundation` и HEAD
+  `1ee0e45eafab56315f40aa266b1b627994388074`;
+- чистое рабочее дерево и совпадающий `origin` branch;
+- PR #1 открыт, mergeable и указывает на тот же HEAD;
+- run `CI #8`, ID `36705516577`, для этого HEAD завершён успешно;
+- workflow устанавливает locked Python 3.11 environment, выполняет
+  `pip check` и обычный `python -m pytest`;
+- test-result files и artifact upload отсутствуют.
+
+Локальный `gh` по-прежнему не запускался: Snap launcher отказался работать
+из-за состояния AppArmor. Это уже известное ограничение локального CLI, а не
+repository defect. PR head и успешный run были проверены через
+аутентифицированный GitHub connector, поэтому изменять workflow или просить
+ручную проверку пользователя не потребовалось.
+
+### Проверка официального upload action
+
+Перед редактированием workflow была проверена официальная страница releases
+`actions/upload-artifact`. Актуальным release оказался `v7.0.1`. Ссылка
+release на commit была раскрыта до полного SHA
+`043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`, и именно этот immutable reference
+помещён в `uses:`. Комментарий `# v7.0.1` оставляет конфигурацию читаемой, но не
+участвует в разрешении action.
+
+Это сохраняет уже установленный на Step 2 supply-chain подход: workflow не
+исполняет mutable major tag или branch. Все три внешних action references —
+`checkout`, `setup-python` и теперь `upload-artifact` — имеют полные 40-значные
+SHA.
+
+### Что изменилось в workflow
+
+#### Создание JUnit XML и readable log
+
+Test step теперь выполняет логически следующий shell flow:
+
+```text
+create test-results directory
+  -> disable immediate shell exit for the pytest pipeline
+  -> run pytest with --junitxml=test-results/pytest.xml
+  -> merge stderr into stdout
+  -> tee the same readable stream into test-results/pytest.log
+  -> capture PIPESTATUS[0], which belongs to pytest
+  -> restore immediate shell exit
+  -> exit with the captured pytest status
+```
+
+`tee` одновременно сохраняет output в файл и оставляет его видимым в обычном
+job log. JUnit XML создаётся самим pytest, поэтому report соответствует тому же
+запуску, а не собирается отдельным post-processing tool.
+
+`set +e` нужен из-за GitHub Actions bash behavior: test command исполняется с
+fail-fast semantics. Без временного отключения immediate exit non-zero
+pipeline завершил бы shell до чтения `PIPESTATUS`. После pipeline значение
+`${PIPESTATUS[0]}` немедленно копируется в `pytest_exit_code`, затем `set -e`
+возвращается и step завершается через `exit "$pytest_exit_code"`.
+
+Индекс `0` принципиален: это status команды `python -m pytest`. Status `tee`
+находится в следующем элементе массива и не может выдать падение pytest за
+успех.
+
+#### Отдельная проверка обоих файлов
+
+Следующий step `Validate test result files` имеет `if: ${{ always() }}`.
+Следовательно, обычное падение test step не мешает проверке reports. Step
+проходит по двум точным путям и требует, чтобы каждый файл существовал и был
+непустым через `[[ -s ... ]]`.
+
+Для каждого отсутствующего файла workflow печатает annotation формата:
+
+```text
+::error file=<path>::Expected test result file is missing or empty
+```
+
+Проверка накапливает failure flag, поэтому если отсутствуют оба результата,
+job покажет две конкретные ошибки, а не остановится после первой.
+
+Изначально предполагалось полагаться только на
+`if-no-files-found: error`. Во время реализации был замечен важный edge case:
+этот input защищает от ситуации, когда upload action не нашёл вообще ни одного
+файла, но не является строгой гарантией наличия каждого элемента multi-path
+набора. Поэтому добавлен отдельный validation step. Это делает требование
+«оба ожидаемых файла» проверяемым буквально.
+
+#### Always-run upload
+
+`Upload test results` также использует `if: ${{ always() }}`. Он запускается:
+
+- после успешного pytest;
+- после failed pytest;
+- даже если validation step сообщил missing result.
+
+Последний случай сохраняет принцип «попытаться загрузить доступную
+диагностику», одновременно оставляя job красным из-за точной validation
+ошибки. В нормальном success/failure test flow оба файла передаются одному
+artifact `pytest-results-python-3.11`.
+
+`if-no-files-found: error` сохранён как второй уровень защиты самого upload
+step. `retention-days` отсутствует, поэтому срок жизни artifact управляется
+настройкой repository. Это CI operational setting. Оно не подтверждает и не
+изменяет retention product data, offline queue guarantee или telemetry
+storage policy.
+
+### Полный поток Step 4.5
+
+Success flow:
+
+```text
+pytest runs all tests
+  -> pytest writes JUnit XML
+  -> tee writes readable log and mirrors output to the job log
+  -> pytest status 0 is preserved
+  -> validation confirms both files are non-empty
+  -> upload-artifact publishes both files
+  -> Python 3.11 job succeeds
+```
+
+Test-failure flow:
+
+```text
+pytest reports a failure and writes result files
+  -> tee preserves readable diagnostics
+  -> test step exits with pytest's non-zero status
+  -> always() validation still checks both files
+  -> always() upload still publishes both files
+  -> job remains failed because the pytest status was not masked
+```
+
+Missing-result flow:
+
+```text
+an expected report is absent or empty
+  -> always() validation emits a path-specific GitHub error
+  -> validation exits non-zero
+  -> always() upload is still attempted for available diagnostics
+  -> if nothing exists, upload action also fails via if-no-files-found: error
+```
+
+### Как это решает задачу
+
+Machine consumers получают стандартный JUnit XML с числом tests, failures и
+errors. Разработчик получает компактный pytest log без install noise. Оба
+представления относятся к одному test invocation и находятся в одном artifact.
+
+Failure observability больше не противоречит correctness gate: reports
+публикуются после non-zero pytest, но итоговый status остаётся non-zero.
+Явная file validation отделяет два вида отказа: падение самих тестов и поломку
+механизма формирования diagnostics.
+
+Step не требует hardware, network call из tests, production Supabase, secret,
+database или Docker. Единственное внешнее действие — стандартная публикация CI
+artifact средствами GitHub Actions после test execution.
+
+### Что происходило во время реализации и как решались проблемы
+
+#### Нужно было сохранить именно status pytest
+
+Простого `set -o pipefail` было бы достаточно в обычном случае, когда `tee`
+успешен, но явное чтение `${PIPESTATUS[0]}` точнее выражает контракт: job
+возвращает status конкретно pytest, а не вычисленный status всего pipeline.
+Отдельная локальная симуляция с non-zero process status `23` сначала доказала
+механику capture, затем настоящий pytest failure path подтвердил status `4`.
+
+#### `if-no-files-found` не доказывал наличие каждого файла
+
+После первого варианта workflow был рассмотрен partial-artifact случай. Один
+существующий файл позволил бы upload action начать upload, даже если второй
+ожидаемый report отсутствует. Отдельный `Validate test result files` закрыл
+этот пробел и формирует понятную annotation для каждого точного пути.
+
+#### Нельзя было смешивать два вида retention
+
+В плане остается открытым Product decision о хранении telemetry. Artifact
+нужен только для диагностики Pull Request CI. Поэтому ни число дней, ни новая
+durable decision запись не добавлялись: GitHub использует repository default,
+а `DECISIONS.md` не меняется.
+
+#### Локальный GitHub CLI оставался недоступен
+
+Ошибка Snap/AppArmor повторилась при удалённой сверке. Она не повлияла на
+implementation: исходный PR/run state прочитан через GitHub connector, а
+актуальный public action release и полный upstream commit проверены в
+официальном `actions/upload-artifact` repository.
+
+### Проверка и что она доказывает
+
+На Python 3.11.9 выполнены locked reinstall и проверки текущего project:
+
+```bash
+.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'
+.venv/bin/python -m pip check
+.venv/bin/python -m pytest --junitxml=test-results/pytest.xml
+```
+
+Результаты:
+
+- locked wheel build и reinstall: PASS;
+- dependency consistency: PASS (`No broken requirements found`);
+- полный suite: PASS (`12 passed`);
+- pytest exit status: `0`;
+- оба result files существуют и непусты;
+- JUnit XML разбирается стандартным XML parser и сообщает `12` tests,
+  `0` failures, `0` errors;
+- readable log содержит путь generated XML и итог `12 passed`.
+
+Отдельная failure-path проверка направила pytest на отсутствующий test path.
+Pytest вернул status `4`, pipeline создал непустые XML/log files, и сохранённый
+`pytest_exit_code` остался равен `4`. Это доказывает, что `tee` не маскирует
+реальный pytest outcome.
+
+Отдельная missing-results проверка была выполнена в пустом временном каталоге.
+Она напечатала две annotations — для XML и log — и завершилась status `1`.
+
+Workflow contract validation дополнительно доказала:
+
+- YAML синтаксически разбирается;
+- все три `uses:` закреплены полными SHA;
+- validation и upload имеют `always()`;
+- перечислены оба точных result path;
+- задан `if-no-files-found: error`;
+- `retention-days`, secret references и `pull_request_target` отсутствуют;
+- Product/runtime tests и dependencies не менялись.
+
+### Что сознательно осталось вне Step 4.5
+
+Step 4.5 не добавлял:
+
+- Product telemetry retention или CI-specific retention duration;
+- новые test semantics или fixtures;
+- duplicate/idempotency, offline queue, reconnect, replay или buffered burst
+  Step 5;
+- out-of-order, stream restart, late-data или clock-skew Step 6;
+- API, HTTP, Storage Adapter, Supabase, PostgreSQL или Docker;
+- credentials, identity, roles, authorization или remote commands;
+- caching, lint, type checking, coverage threshold или test splitting;
+- deployment, branch protection, PR merge или Hardware-in-the-Loop.
+
+После локальной валидации Step 4.5 имеет статус `READY_FOR_COMMIT`. Для полного
+завершения нужны явное разрешение пользователя на commit/push, успешный новый
+`CI / Python 3.11`, появление artifact в этом run и download/inspection обоих
+файлов из artifact. Step 5 в этой сессии не начинается.

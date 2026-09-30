@@ -34,4 +34,33 @@ jobs:
         run: python -m pip check
 
       - name: Run tests
-        run: python -m pytest
+        run: |
+          mkdir -p test-results
+          set +e
+          python -m pytest --junitxml=test-results/pytest.xml 2>&1 \
+            | tee test-results/pytest.log
+          pytest_exit_code=${PIPESTATUS[0]}
+          set -e
+          exit "$pytest_exit_code"
+
+      - name: Validate test result files
+        if: ${{ always() }}
+        run: |
+          missing_results=0
+          for result_file in test-results/pytest.xml test-results/pytest.log; do
+            if [[ ! -s "$result_file" ]]; then
+              echo "::error file=$result_file::Expected test result file is missing or empty"
+              missing_results=1
+            fi
+          done
+          exit "$missing_results"
+
+      - name: Upload test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pytest-results-python-3.11
+          path: |
+            test-results/pytest.xml
+            test-results/pytest.log
+          if-no-files-found: error
