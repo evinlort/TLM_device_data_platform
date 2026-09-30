@@ -3,10 +3,11 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Verified starting HEAD for Step 6:
-  `4fc720d2db00c5f852e800b06b2d4a8615be0f97`.
-- Remote branch `origin/ci/github-actions-foundation` resolved to the same SHA
-  before Step 6 changes.
+- Step 6 implementation commit:
+  `dac48925b2f5f0d09627a9f02b2783d332c31595`.
+- The commit containing this file finalizes the Step 6 handoff; use
+  `git rev-parse HEAD` for its exact SHA without creating a self-referential
+  state update.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: public `evinlort/TLM_device_data_platform` with `main` as
@@ -15,23 +16,22 @@
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open from `ci/github-actions-foundation` to `main`.
 - GitHub Actions
-  [CI #12](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36723266684)
-  completed successfully for the verified starting HEAD. Its `Python 3.11`
-  job completed locked installation, dependency checking, pytest, result-file
-  validation, and artifact upload successfully.
-- Prerequisite artifact `pytest-results-python-3.11`, ID `11101041556`, was
-  downloaded and inspected before Step 6. Its GitHub digest and downloaded
-  ZIP SHA-256 both equal
-  `ab5529354c9de7eca236a3d091a351610219994a178c6f739f1814bcf5c08231`.
-- Working tree: contains the reviewed and locally validated Step 6 changes;
-  they are not committed or pushed pending explicit user approval.
+  [CI #13](https://github.com/evinlort/TLM_device_data_platform/actions/runs/36730767093)
+  completed successfully for the Step 6 implementation commit. Its
+  `Python 3.11` job completed locked installation, dependency checking,
+  pytest, result-file validation, and artifact upload successfully.
+- Step 6 artifact `pytest-results-python-3.11`, ID `11105275969`, was
+  downloaded and inspected. Its GitHub digest and the downloaded ZIP SHA-256
+  both equal
+  `3bf8dd9be495b94d0266244438d373cc94f78fde8332a9ceb022221ff6c9ab37`.
+- Working tree: expected to be clean after the approved final Step 6 handoff
+  commit.
 
 ## Current milestone
 
 - Step: Step 6 — Add ordering, stream, and late-data scenarios.
-- Status: READY_FOR_COMMIT.
-- Completion blockers: explicit commit/push approval, then successful Pull
-  Request workflow verification and inspection of the Step 6 artifact.
+- Status: DONE.
+- Completion blockers: none.
 
 ## Verified facts
 
@@ -103,10 +103,18 @@ No import-path workaround or dependency change was made.
 
 Remote Step 6 validation:
 
-- PENDING until the user approves commit and push.
-- The Step 6 Pull Request run must complete successfully and its published
-  `pytest-results-python-3.11` artifact must be downloaded and inspected before
-  Step 6 can be marked DONE.
+- Workflow: `CI`, run ID `36730767093`, run number `13`.
+- Commit: `dac48925b2f5f0d09627a9f02b2783d332c31595`.
+- Job: `Python 3.11`; every job step completed with conclusion `success`.
+- Artifact: `pytest-results-python-3.11`, ID `11105275969`, `1393` archive
+  bytes, not expired when inspected.
+- The GitHub-reported and downloaded ZIP SHA-256 both equal
+  `3bf8dd9be495b94d0266244438d373cc94f78fde8332a9ceb022221ff6c9ab37`.
+- The downloaded ZIP passed archive integrity validation and contained exactly
+  the expected non-empty `pytest.xml` (`3218` bytes) and `pytest.log` (`881`
+  bytes).
+- Downloaded JUnit XML: `20` tests, `0` failures, `0` errors, `0` skipped.
+- Downloaded pytest log: PASS; it contains the `20 passed` summary.
 
 ## Current CI
 
@@ -162,10 +170,9 @@ not require changes.
 ## Next step
 
 - Step: Step 7 — Establish the local API/storage integration boundary.
-- Step 7 is not activated while Step 6 is `READY_FOR_COMMIT`.
-- After approved commit/push, successful Pull Request CI, artifact download
-  and inspection, and a final Step 6 handoff update, Step 7 must start in a
-  new Codex session.
+- Step 6 is committed, pushed, successful in the Pull Request workflow, and
+  its published artifact has been downloaded and inspected.
+- Step 7 must start in a new Codex session.
 
 Use `docs/ci/BOOTSTRAP_PROMPT.md` for that new session. Do not start Step 7 in
 this session.

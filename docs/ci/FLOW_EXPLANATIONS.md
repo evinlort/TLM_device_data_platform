@@ -2152,3 +2152,51 @@ artifact.
 Удалённая проверка Step 6 пока намеренно не заявлена: она возможна только после
 явного разрешения пользователя на commit и push. До этого Step 6 не получает
 статус `DONE`.
+
+### Удалённая проверка и завершение шага
+
+После явного разрешения пользователя реализация, tests и подготовленный handoff
+были зафиксированы commit
+`dac48925b2f5f0d09627a9f02b2783d332c31595`
+(`test: add deterministic ordering scenarios`) и отправлены в
+`ci/github-actions-foundation`.
+
+Push запустил GitHub Actions workflow `CI`, run ID `36730767093`, run number
+`13`. Job `Python 3.11` завершился с conclusion `success`. Повторная проверка
+job details подтвердила, что checkout, Python setup, locked install,
+`pip check`, pytest, result-file validation и artifact upload имеют статус
+`completed` и conclusion `success`.
+
+Первый ответ GitHub jobs API после завершения run был внутренне
+несогласованным: весь job уже имел `completed/success`, но
+`Check dependency consistency` ещё отображался как `in_progress`, а несколько
+steps временно отсутствовали. Этот snapshot не был принят как окончательное
+доказательство. После завершения eventual-consistency обновления повторный
+запрос вернул полный согласованный список всех successful steps.
+
+GitHub также показал информационное предупреждение, что label `ubuntu-latest`
+начнёт миграцию на Ubuntu 26 с 19 октября 2026 года. Оно не повлияло на текущий
+run и не требует изменения Step 6. Будущую смену runner image следует
+оценивать по фактическим результатам CI, а не превращать её в незапрошенное
+изменение этого шага.
+
+Run опубликовал artifact `pytest-results-python-3.11`, ID `11105275969`,
+размером `1393` archive bytes. Artifact был скачан во временный каталог.
+SHA-256 скачанного ZIP
+`3bf8dd9be495b94d0266244438d373cc94f78fde8332a9ceb022221ff6c9ab37`
+точно совпал с GitHub digest. `unzip -t` подтвердил целостность архива.
+
+Внутри находились ровно два ожидаемых непустых файла:
+
+- `pytest.xml` — `3218` bytes, `20` tests, `0` failures, `0` errors,
+  `0` skipped;
+- `pytest.log` — `881` bytes и итог `20 passed`.
+
+Удалённая проверка доказывает, что Step 6 проходит на чистом
+GitHub-hosted runner с locked environment и что существующий artifact flow
+публикует результаты всех новых ordering scenarios. После successful run и
+artifact inspection `CI_PLAN.md` и `CI_STATE.md` переведены в `DONE`.
+
+Следующим остаётся Step 7 — local API/storage integration boundary. Его
+реализация в этой сессии не начиналась и должна стартовать только в новой
+сессии через `docs/ci/BOOTSTRAP_PROMPT.md`.

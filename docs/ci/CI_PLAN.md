@@ -127,7 +127,7 @@ Dependencies: Step 4.5.
 
 ### Step 6 — Add ordering, stream, and late-data scenarios
 
-Status: READY_FOR_COMMIT
+Status: DONE
 
 Acceptance criteria:
 
