@@ -2,82 +2,90 @@
 
 ## Repository
 
-- Branch: `ci/github-actions-foundation`
-- HEAD: the commit containing this file completes Step 1; use
-  `git rev-parse HEAD` to obtain its exact SHA without creating a
-  self-referential state update.
+- Branch: `ci/github-actions-foundation`.
+- HEAD: the approved Step 1 commit; use `git rev-parse HEAD` for the exact SHA.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: private `evinlort/TLM_device_data_platform` with `main`
   as the default branch.
-- Working tree: expected to be clean after the approved Step 1 commit.
+- Working tree: contains the locally implemented Step 2 workflow and handoff
+  updates awaiting explicit commit/push approval.
 
 ## Current milestone
 
-- Step: Step 1 — Establish the Python validation baseline
-- Status: DONE
-- Completion blockers: none.
+- Step: Step 2 — Add the Python GitHub Actions foundation.
+- Status: IN_PROGRESS.
+- Completed locally: workflow implementation, clean Python validation,
+  workflow syntax review, workflow security/semantics review, and official
+  action release/SHA verification.
+- Remaining: obtain approval, commit and push, open a Pull Request, verify the
+  actual GitHub Actions run, then record the final Step 2 state.
 
 ## Verified facts
 
-- Python 3.11 is the minimum supported project version for the initial
-  baseline. Upstream security support continues through October 2027.
-- Local validation used Python 3.11.9 and pip 24.0 in a newly created isolated
-  virtual environment.
-- The project uses `pyproject.toml`, a `src/` layout, setuptools 84.0.0 as the
-  pinned build backend, and pytest 9.1.1.
-- `requirements/test.txt` locks the resolved Python 3.11 test environment.
-- Package version `0.0.0` is a non-release bootstrap placeholder, not a
-  product release or versioning requirement.
-- No lint or type-check dependency is established yet.
+- Python 3.11 remains the minimum supported project version for the initial
+  baseline.
+- The Step 1 locked installation and mandatory checks still pass in a newly
+  created isolated `.venv` using Python 3.11.9 and pip 24.0.
+- The package imports from the installed wheel in `site-packages`, not from
+  the source tree.
+- GitHub documents explicit least-privilege workflow permissions and
+  full-length commit SHA action pins as security practices.
+- The current official releases selected for this workflow were verified
+  directly against their upstream Git repositories:
+  - `actions/checkout@v7.0.1` resolves to
+    `3d3c42e5aac5ba805825da76410c181273ba90b1`.
+  - `actions/setup-python@v7.0.0` resolves to
+    `5fda3b95a4ea91299a34e894583c3862153e4b97`.
+- No Pull Request ref currently exists in the remote repository, so opening a
+  Pull Request is required to exercise the PR-only workflow after push.
 
-## Implemented
+## Implemented locally
 
-- A buildable `tlm-device-data-platform` distribution with the import package
-  `tlm_device_data_platform`.
-- Strict pytest configuration with `importlib` import mode and `tests/` as the
-  explicit test path.
-- One deterministic test proving the normally installed package is
-  importable.
-- Git ignores for virtual environments, Python caches, test caches, build
-  output, and package metadata output.
+- One workflow at `.github/workflows/ci.yml`.
+- Pull Request is the only trigger; there is no `pull_request_target`, secret,
+  production service, hardware, Docker, or Supabase dependency.
+- Workflow-level `contents: read` permission.
+- Per-PR concurrency with cancellation of superseded runs.
+- One `ubuntu-latest` Python 3.11 job with a 10-minute timeout.
+- Full-SHA pins for `actions/checkout` and `actions/setup-python`.
+- Checkout credential persistence disabled.
+- The exact Step 1 install, dependency-consistency, and pytest commands.
 
-## Validation
+## Local validation
 
-Canonical clean-environment commands established by Step 1:
+Commands executed:
 
 - `python3 -m venv .venv`
 - `.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'`
 - `.venv/bin/python -m pip check`
 - `.venv/bin/python -m pytest`
-
-Additional commands executed during Step 1:
-
-- `python3 --version`
-- `python3 -m pip --version`
-- `python3 -m venv /tmp/tlm-step1-locked.u0nmpr/venv`
-- `/tmp/tlm-step1-locked.u0nmpr/venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'`
-- `/tmp/tlm-step1-locked.u0nmpr/venv/bin/python -m pip check`
-- `/tmp/tlm-step1-locked.u0nmpr/venv/bin/python -m pytest`
-- Installed-package path verification from outside the repository root
+- Installed-package path verification from outside the repository root.
+- Ruby/Psych YAML parse of `.github/workflows/ci.yml`.
+- Explicit assertions for the trigger, permissions, concurrency cancellation,
+  timeout, full-SHA pins, mandatory commands, and absence of unsafe event or
+  secret references.
 - `git diff --check`
+- `git ls-remote` verification of the two official action release tags.
 
 Results:
 
-- Clean isolated installation built and installed the wheel successfully.
-- The import package resolved from the clean environment's `site-packages`,
-  not from the source tree.
+- Clean isolated installation: PASS.
 - Dependency consistency: PASS (`No broken requirements found`).
 - Tests: PASS (`1 passed`).
-- Mandatory post-install checks required no network, Docker, Supabase,
-  secrets, or physical hardware.
+- Installed-package boundary: PASS.
+- YAML syntax: PASS.
+- Workflow security/semantics assertions: PASS.
+- Whitespace validation: PASS.
+- Actual GitHub Actions run: PENDING approved push and Pull Request creation.
 
 ## Current CI
 
-- Workflows: none.
-- Mandatory local checks:
+- Local mandatory checks:
   - `.venv/bin/python -m pip check`
   - `.venv/bin/python -m pytest`
+- Pull Request workflow: implemented and locally validated, not yet committed
+  or exercised on GitHub.
 - Tests: one deterministic installed-package boundary test.
 
 ## Current simulator state
@@ -102,29 +110,22 @@ See `docs/ci/CI_PLAN.md` for the fuller list and affected future milestones.
 
 ## Technical blockers
 
-- None for Step 2.
+- None. Completion is waiting only for explicit repository-write approval and
+  the resulting remote workflow run.
 
-## Files changed in the last completed step
+## Files changed in the current step
 
-- `.gitignore`
-- `pyproject.toml`
-- `requirements/test.txt`
-- `src/tlm_device_data_platform/__init__.py`
-- `tests/test_package.py`
+- `.github/workflows/ci.yml`
 - `docs/ci/CI_PLAN.md`
 - `docs/ci/CI_STATE.md`
 - `docs/ci/NEXT_SESSION.md`
-- `docs/ci/DECISIONS.md`
 
-## Next step
+## Exact continuation
 
-- Step: Step 2 — Add the Python GitHub Actions foundation
-- Goal: run the established clean install and mandatory Python checks in one
-  minimal, hardened Pull Request workflow.
-- Expected files: `.github/workflows/ci.yml` plus CI state/handoff updates.
-- Validation required: local baseline checks, workflow syntax/security review,
-  verified action SHAs, and an actual GitHub Actions run when safely
-  triggerable after approval.
-
-Step 2 must start in a new Codex session using
-`docs/ci/BOOTSTRAP_PROMPT.md`.
+- Review the current diff and local validation evidence.
+- Obtain explicit approval before commit or push.
+- Commit and push the Step 2 implementation.
+- Open a Pull Request to `main` from `ci/github-actions-foundation`.
+- Verify the actual `CI / Python 3.11` GitHub Actions check.
+- If green, mark Step 2 DONE and prepare Step 3 in the persistent handoff.
+- Do not implement Step 3 in this session.
