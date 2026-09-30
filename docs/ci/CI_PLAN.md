@@ -40,7 +40,7 @@ Dependencies: none.
 
 ### Step 1 — Establish the Python validation baseline
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 

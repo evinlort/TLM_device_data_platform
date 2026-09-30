@@ -2,13 +2,13 @@
 
 ## Activation condition
 
-Step 0 is complete. Before starting Step 1, verify that the actual branch,
-HEAD, remote, and working tree agree with `docs/ci/CI_STATE.md`. Stop and
+Step 1 is complete. Before starting Step 2, verify that the actual branch,
+HEAD, remote, and clean working tree agree with `docs/ci/CI_STATE.md`. Stop and
 investigate any mismatch.
 
 ## Step
 
-Step 1 — Establish the Python validation baseline
+Step 2 — Add the Python GitHub Actions foundation
 
 ## Read first
 
@@ -20,65 +20,78 @@ Step 1 — Establish the Python validation baseline
 
 Additional files relevant to this step:
 
-- `TLM GitHub CI — Codex Master Prompt (пошаговая работа между сессиями).md`
+- `pyproject.toml`
+- `requirements/test.txt`
+- `src/tlm_device_data_platform/__init__.py`
+- `tests/test_package.py`
 
 Do not read unrelated future files unless the current step requires them.
 
 ## Goal
 
-Establish the smallest reproducible Python package and test baseline suitable
-for the currently empty repository. Select tooling deliberately, add at least
-one deterministic and meaningful validation target, and document exact local
-commands without inventing product behavior.
+Add one minimal GitHub Actions workflow that installs the locked Python 3.11
+test environment and runs the mandatory checks established in Step 1 on Pull
+Requests. Harden the workflow without adding unrelated CI layers.
 
 ## Current verified starting point
 
-- The repository had no application code, project metadata, dependencies,
-  tests, workflows, simulator, or database files at the Step 0 audit.
-- Local Python 3.11.9 is only an environment observation; no supported project
-  version has been selected.
-- Local `pytest` is currently not importable.
-- No physical hardware is available or required.
+- Python 3.11 is the minimum supported baseline and remains supported upstream
+  through October 2027.
+- A clean isolated installation with the locked test constraints succeeds.
+- `.venv/bin/python -m pip check` passes.
+- `.venv/bin/python -m pytest` passes with `1 passed`.
+- No GitHub Actions workflow exists.
+- No physical hardware, Docker, Supabase, secrets, or network access is needed
+  after dependency installation.
 
 ## Allowed scope
 
-- Python project metadata and dependency declarations.
-- Minimal `src/` package foundation only where necessary for a meaningful
-  validation target.
-- Deterministic unit tests and test configuration.
-- Minimal lint/format configuration only after checking that no established
-  repository tool exists.
+- One workflow under `.github/workflows/`.
+- Pull Request validation and optional safe manual/main-branch triggers if
+  justified by current repository policy.
+- Python 3.11 setup and the exact Step 1 install/check commands.
+- Minimum `contents: read` permissions, concurrency cancellation, and a job
+  timeout.
+- Full-commit-SHA pins verified against the official upstream repositories.
 - CI state/handoff updates required by the step-end protocol.
 
 ## Out of scope
 
-- GitHub Actions workflow implementation; that is Step 2.
-- Device simulator behavior.
+- Device simulator behavior or tests.
 - API implementation.
-- Supabase configuration, migrations, seed data, or database tests.
-- Product credential, role, telemetry-field, retention, or rate decisions.
-- Deployment and Hardware-in-the-Loop.
+- Supabase, PostgreSQL, Docker, or integration jobs.
+- Dependency caching or test splitting.
+- Coverage thresholds, lint/type-check additions, and deployment.
+- Secrets, `pull_request_target`, branch protection, or required-check changes.
 
 ## Required investigation
 
 - Reconfirm repository and Git state before changes.
-- Check current official Python packaging and pytest guidance relevant to the
-  chosen baseline.
-- Do not treat the locally installed Python version as an automatic project
-  requirement.
+- Check current official GitHub Actions workflow syntax and security guidance.
+- Verify the current supported `actions/checkout` and `actions/setup-python`
+  releases and resolve their release tags to full upstream commit SHAs.
+- Inspect current repository settings only as needed to choose safe triggers.
+- Do not copy mutable action tags into the final workflow.
 
 ## Validation
 
-Establish and execute exact commands for:
+Recreate or reuse an isolated environment and run:
 
-- dependency installation in a clean isolated environment;
-- deterministic tests;
-- lint/format validation if such tooling is added.
+- `python3 -m venv .venv`
+- `.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'`
+- `.venv/bin/python -m pip check`
+- `.venv/bin/python -m pytest`
 
-Expected result: every mandatory command passes without network, Docker,
-Supabase, secrets, or physical hardware after dependencies are installed.
+Also validate the workflow syntax and semantics, confirm `contents: read`,
+concurrency cancellation, timeout, safe event context, and verified full-SHA
+pins. After approved commit and push, verify the workflow in GitHub when the
+configured trigger can be exercised safely.
+
+Expected result: the local checks remain green and the minimal workflow is
+ready to provide the same mandatory validation on a clean GitHub-hosted
+runner without secrets, production services, or physical hardware.
 
 ## Stop condition
 
 After implementation, validation, state update, approved commit, and push.
-Do not start Step 2 in this session.
+Do not start Step 3 in this session.

@@ -108,3 +108,40 @@ Source:
 
 Step 0 repository initialization and the Git workflow requirements in
 `TLM GitHub CI — Codex Master Prompt (пошаговая работа между сессиями).md`.
+
+## CI-DEC-005 — Initial Python validation baseline
+
+Status: ACCEPTED
+
+Decision:
+
+Use Python 3.11 as the minimum supported Python version for the initial CI
+baseline. Define the project with `pyproject.toml`, a `src/` package layout,
+and a setuptools build backend. Use pinned pytest 9.1.1 with strict
+configuration and `importlib` import mode. Lock the resolved Python 3.11 test
+dependencies in `requirements/test.txt`.
+
+Reason:
+
+Python 3.11 remains supported upstream through October 2027 and is available
+for local verification. The PyPA and pytest documentation recommend
+`pyproject.toml`, isolated virtual environments, installed-package testing,
+the `src/` layout, and `importlib` import mode for new projects. Pinning the
+test environment makes the same baseline installable on a clean runner.
+
+Consequences:
+
+- Step 2 must install with
+  `python -m pip install --constraint requirements/test.txt '.[test]'` and run
+  `python -m pytest`.
+- Dependency updates must keep `pyproject.toml` and `requirements/test.txt`
+  consistent and must be revalidated in a clean environment.
+- The package version `0.0.0` is a non-release bootstrap placeholder. This
+  step makes no product release or versioning decision.
+- Additional supported Python versions and lint/type-check tools require
+  separate verified changes; they are not implied by this baseline.
+
+Source:
+
+Step 1 official Python Packaging User Guide, pytest documentation, and Python
+version-support review.
