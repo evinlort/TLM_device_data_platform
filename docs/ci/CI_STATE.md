@@ -3,8 +3,10 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Starting committed HEAD for Step 12 and current committed HEAD:
+- Starting committed HEAD for Step 12:
   `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`.
+- Step 12 documentation commit and current committed HEAD:
+  `0a71ad4cc852ba9c0699a1153f8e10d3ec6b0103`.
 - Final Step 11 handoff commit:
   `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`.
 - Step 11 implementation commit:
@@ -25,18 +27,17 @@
   because the approved conversation-resolution rule exposes one old unresolved
   and now outdated review thread.
 - Local HEAD, remote-tracking branch, and Pull Request head all match
-  `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`.
-- Working tree: contains only the uncommitted Step 12 persistent handoff and
-  documentation update.
+  `0a71ad4cc852ba9c0699a1153f8e10d3ec6b0103`.
+- Working tree: contains only this uncommitted final Step 12 persistent handoff
+  update.
 
 ## Current milestone
 
 - Step: Step 12 — Apply explicitly approved branch protection.
-- Status: READY_FOR_COMMIT.
-- Completion blocker: none for the repository setting. The approved protection
-  is active and verified; the documentation-only Step 12 handoff still requires
-  separate explicit approval before commit/push and subsequent remote CI and
-  artifact verification.
+- Status: DONE.
+- Completion blocker: none. The approved protection and the pushed Step 12
+  documentation commit are remotely verified. This final documentation-only
+  handoff update still requires separate explicit approval before commit/push.
 
 ## Step 12 verified starting state
 
@@ -426,6 +427,57 @@ does not define Product ordering, and `body` remains opaque.
 - Added `CI-DEC-016` and updated the testing/protection guide and persistent
   handoff to record the approved governance contract and exact read-back.
 
+## Remote Step 12 validation
+
+- The explicitly approved documentation commit
+  `0a71ad4cc852ba9c0699a1153f8e10d3ec6b0103`, message
+  `docs: record main branch protection`, was pushed to
+  `ci/github-actions-foundation`. Local HEAD, remote-tracking branch, and Pull
+  Request head matched that exact commit; the working tree was clean.
+- Pull Request #1 remained open, non-draft, technically mergeable, unmerged,
+  and targeted `main`. Its merge-state status remained `blocked` by the same
+  unresolved, outdated review thread; no conversation was resolved or
+  dismissed.
+- Workflow `CI`, run #25, ID `36924360504`, attempt `1`, completed with
+  conclusion `success` for the exact documentation commit.
+- Job `Python 3.11`, ID `110577899379`, completed successfully in `13s`; every
+  checkout, setup, locked install, dependency check, pytest, result validation,
+  artifact upload, post, and completion step succeeded.
+- Job `Local Supabase integration`, ID `110577898899`, completed successfully
+  in `2m40s`; every Node/Python setup, locked install, exact CLI check, local
+  startup, clean database rebuild, pgTAP, Python integration, unconditional
+  cleanup, result validation, artifact upload, post, and completion step
+  succeeded.
+- Exact-commit check runs reconfirmed required contexts `Python 3.11` and
+  `Local Supabase integration`, both successful and both produced by GitHub
+  Actions App `15368`. `Sourcery review` remained a skipped third-party check
+  from App `48477` and is not required.
+- Artifact `pytest-results-python-3.11`, ID `11192764078`, archive size `1488`
+  bytes, was not expired. GitHub metadata and the independently downloaded ZIP
+  both reported SHA-256
+  `67e6c29dd7a46ebe7240f597229b4463ce986532d352d139b494a42012995630`.
+  It contained exactly non-empty `pytest.xml` (`3481` bytes) and `pytest.log`
+  (`961` bytes); JUnit reported `22` tests, zero failures, zero errors, and zero
+  skipped tests, while pytest reported `22 passed in 0.45s`.
+- Artifact `local-integration-results`, ID `11193606275`, archive size `2227`
+  bytes, was not expired. GitHub metadata and the independently downloaded ZIP
+  both reported SHA-256
+  `d7869b9c83292a77886eda62914be6e3cb0f4c0a4f7de6c20f293efde4657403`.
+  It contained exactly non-empty `database-tests.log` (`1329` bytes),
+  `pytest.xml` (`3481` bytes), and `pytest.log` (`979` bytes). The database log
+  reported one file, `18` tests, and `Result: PASS`; JUnit reported `22` tests
+  with zero failures, errors, or skipped tests, and pytest reported
+  `22 passed in 0.38s`.
+- Downloaded artifact scans found no hosted Supabase endpoint, PostgreSQL URL,
+  JWT-like value, token, password, secret, or service-role key. The disposable
+  download directory was removed.
+- Full protection read-back remained an exact match for `PROTECTION v1.1`,
+  including `strict = true`, both App-`15368` bindings, zero approvals, admin
+  enforcement, required conversations, disabled signatures/linear history,
+  and disabled force pushes/deletion. Repository rulesets remained empty.
+- The exact remote run proves the documentation-only commit preserved both
+  required CI flows and artifact contracts after protection became active.
+
 ## Required CI
 
 - Pull Request workflow: `.github/workflows/ci.yml`.
@@ -507,13 +559,10 @@ changed.
 
 ## Next step
 
-- Step: finish Step 12 remote verification after the documentation-only handoff
-  commit is explicitly approved, committed, and pushed.
-- Verify the exact pushed commit, both Pull Request jobs and both published
-  artifacts, and confirm that the complete `PROTECTION v1.1` read-back remains
-  unchanged.
-- Then prepare the final Step 12 handoff. No later CI implementation step is
-  currently authorized.
+- The Step 12 documentation commit and its exact remote run are verified. The
+  current remaining action is only the final documentation-only handoff
+  commit/push after separate explicit approval.
+- No later CI implementation step is currently authorized.
 - Do not resolve review conversations, merge or close Pull Request #1, change
   protection, add a coverage threshold, or begin Product work without separate
   explicit direction.

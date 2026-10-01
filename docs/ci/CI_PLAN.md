@@ -277,7 +277,7 @@ Implementation summary:
 
 ### Step 12 — Apply explicitly approved branch protection
 
-Status: READY_FOR_COMMIT
+Status: DONE
 
 Acceptance criteria:
 
@@ -323,6 +323,18 @@ Implementation summary:
   Pull Request content, or ruleset change was made.
 - Documentation and persistent handoff are prepared for a separately approved
   documentation-only commit/push and exact remote validation.
+- Approved documentation commit
+  `0a71ad4cc852ba9c0699a1153f8e10d3ec6b0103` was pushed and verified by
+  successful Pull Request run #25. Both jobs and every main/post step passed.
+- Both exact-run artifacts were independently downloaded; their SHA-256
+  digests matched GitHub metadata, their file sets and test totals matched the
+  established contracts, and credential/hosted-endpoint scans were clean.
+- The final full protection read-back still matched `PROTECTION v1.1`, both
+  required checks remained bound to GitHub Actions App `15368`, repository
+  rulesets remained empty, and Pull Request #1 remained open and unmerged.
+- Step 12 is complete. Only the final documentation-only persistent handoff
+  still awaits separate commit/push approval; no later CI implementation step
+  is authorized.
 
 ## Dependency order
 

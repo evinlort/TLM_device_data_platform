@@ -4018,3 +4018,72 @@ documentation-only и требует отдельного явного разр�
 commit/push. После push нужно проверить exact remote commit, оба jobs, каждый
 их step, оба artifacts и неизменность полного branch-protection read-back.
 Только после этого Step 12 можно перевести в окончательный `DONE`.
+
+### Удалённая проверка и завершение шага
+
+После отдельного явного разрешения пользователя documentation и persistent
+handoff были сохранены коммитом
+`0a71ad4cc852ba9c0699a1153f8e10d3ec6b0103` с сообщением
+`docs: record main branch protection` и отправлены в
+`ci/github-actions-foundation`. Local HEAD, remote-tracking branch и head Pull
+Request #1 совпали с этим exact commit; working tree был чистым. Pull Request
+остался open, non-draft, technically mergeable, unmerged и направленным в
+`main`. Его merge-state сохранился как `blocked` из-за того же unresolved,
+outdated review thread.
+
+GitHub Actions создал workflow `CI`, run #25 с ID `36924360504`, attempt 1.
+Run завершился `success` на exact documentation commit. Job `Python 3.11`, ID
+`110577899379`, завершился успешно за 13 секунд: checkout, Python setup, locked
+install, dependency check, pytest, result validation, upload и все post steps
+получили conclusion `success`.
+
+Job `Local Supabase integration`, ID `110577898899`, завершился успешно за 2
+минуты 40 секунд. Успешны Node/Python setup, оба locked installs, exact CLI
+assertion, local Supabase startup, clean database rebuild, 18 pgTAP assertions,
+полный Python integration suite, unconditional cleanup, result validation,
+upload и все post steps. Это подтверждает, что включённая protection не
+изменила CI semantics, а documentation-only commit сохранил disposable local
+integration contract.
+
+Check runs на exact commit повторно подтвердили contexts `Python 3.11` и
+`Local Supabase integration`, оба с conclusion `success` и provider GitHub
+Actions App `15368`. `Sourcery review` от App `48477` был `skipped` и не входит
+в required set.
+
+Оба artifacts run #25 были скачаны и проверены независимо:
+
+- `pytest-results-python-3.11`, ID `11192764078`, archive size 1488 bytes.
+  GitHub digest и SHA-256 скачанного ZIP совпали:
+  `sha256:67e6c29dd7a46ebe7240f597229b4463ce986532d352d139b494a42012995630`.
+  Архив содержит ровно непустые `pytest.xml` размером 3481 bytes и
+  `pytest.log` размером 961 bytes. JUnit сообщает 22 tests, 0 failures,
+  0 errors и 0 skipped; pytest сообщает `22 passed in 0.45s`.
+- `local-integration-results`, ID `11193606275`, archive size 2227 bytes.
+  GitHub digest и SHA-256 скачанного ZIP совпали:
+  `sha256:d7869b9c83292a77886eda62914be6e3cb0f4c0a4f7de6c20f293efde4657403`.
+  Архив содержит ровно непустые `database-tests.log` размером 1329 bytes,
+  `pytest.xml` размером 3481 bytes и `pytest.log` размером 979 bytes. Database
+  log сообщает один файл, 18 tests и `Result: PASS`; JUnit сообщает 22 tests,
+  0 failures, 0 errors и 0 skipped; pytest сообщает `22 passed in 0.38s`.
+
+Artifact scans не нашли hosted Supabase endpoint, PostgreSQL URL,
+JWT-подобное значение, token, password, secret или service-role key. Temporary
+download directory был удалён.
+
+Финальный full protection read-back снова совпал с `PROTECTION v1.1`:
+`strict = true`, оба required checks привязаны к App `15368`, approvals равны
+нулю, admin enforcement и conversation resolution включены, signatures,
+linear history, force pushes, deletion, creation blocking, branch lock и fork
+syncing выключены. Repository rulesets остались пустыми. PR не был merge или
+close, а review thread не был resolved или dismissed.
+
+Remote validation доказывает, что exact Step 12 documentation commit прошёл
+оба уже обязательных CI gates, сохранил artifacts и не изменил утверждённую
+governance configuration. Step 12 переведён в `DONE`; planned CI sequence через
+Step 12 завершена.
+
+Текущий final persistent handoff является отдельным documentation-only
+изменением и требует нового явного разрешения на commit/push. Его exact run
+должен быть проверен при следующем запуске bootstrap, но эта проверка не должна
+создавать ещё один handoff commit. Никакой следующий CI или Product шаг не
+авторизован; Pull Request остаётся открытым до отдельного решения пользователя.
