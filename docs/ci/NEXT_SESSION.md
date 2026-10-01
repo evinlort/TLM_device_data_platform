@@ -2,13 +2,19 @@
 
 ## Activation condition
 
-This handoff becomes active only after Step 0 is committed and pushed. If
-`docs/ci/CI_STATE.md` still reports Step 0 as `IN_PROGRESS`, stop and finish
-Step 0 instead of starting Step 1.
+The planned CI sequence through Step 12 is complete. Start a new session only
+to verify the final Step 12 persistent handoff commit after it has been
+explicitly approved, committed, and pushed, or when the user explicitly
+authorizes new work.
+
+Before any action, verify the actual branch, exact local and remote HEAD, clean
+working tree, Pull Request, exact-commit workflow run, both jobs, both artifacts,
+complete branch-protection read-back, required check/provider bindings, and
+repository rulesets against `docs/ci/CI_STATE.md`.
 
 ## Step
 
-Step 1 — Establish the Python validation baseline
+Post-Step 12 — Verify the final handoff and stop
 
 ## Read first
 
@@ -17,68 +23,59 @@ Step 1 — Establish the Python validation baseline
 3. `docs/ci/CI_PLAN.md`
 4. `docs/ci/NEXT_SESSION.md`
 5. `docs/ci/DECISIONS.md`
+6. `docs/ci/TESTING_AND_BRANCH_PROTECTION.md`
+7. `docs/ci/FLOW_EXPLANATIONS.md`
 
-Additional files relevant to this step:
+Read only additional GitHub workflow, artifact, Pull Request, and repository
+setting sources needed for final handoff verification.
 
-- `TLM GitHub CI — Codex Master Prompt (пошаговая работа между сессиями).md`
+## Current completed state
 
-Do not read unrelated future files unless the current step requires them.
+- Step 12 status is `DONE`.
+- `main` is protected by the explicitly approved classic configuration
+  `PROTECTION v1.1`.
+- Required contexts are `Python 3.11` and `Local Supabase integration`, both
+  bound to GitHub Actions App `15368`, with `strict = true`.
+- Pull Request #1 remains open and unmerged. Its merge state is blocked by one
+  old unresolved, outdated review conversation; the branch is not behind and
+  both required checks are successful.
+- Repository rulesets are empty.
+- Documentation commit `0a71ad4cc852ba9c0699a1153f8e10d3ec6b0103`
+  passed workflow run #25 and both artifact contracts were independently
+  verified.
 
 ## Goal
 
-Establish the smallest reproducible Python package and test baseline suitable
-for the currently empty repository. Select tooling deliberately, add at least
-one deterministic and meaningful validation target, and document exact local
-commands without inventing product behavior.
+Verify that the final Step 12 handoff commit itself is present locally,
+remotely, and at the Pull Request head; that its two jobs and artifacts pass the
+existing contracts; and that `PROTECTION v1.1` remains unchanged. Report the
+result and stop without creating another handoff commit.
 
-## Current verified starting point
+## Required approach
 
-- The repository had no application code, project metadata, dependencies,
-  tests, workflows, simulator, or database files at the Step 0 audit.
-- Local Python 3.11.9 is only an environment observation; no supported project
-  version has been selected.
-- Local `pytest` is currently not importable.
-- No physical hardware is available or required.
+- Match local HEAD, remote-tracking branch, and Pull Request head exactly.
+- Inspect the exact-commit Pull Request workflow run and every main/post job
+  step.
+- Download both artifacts, compare GitHub and independently computed SHA-256
+  digests, inspect exact non-empty contents, and verify pgTAP/JUnit/pytest
+  totals.
+- Read back the full protection and confirm every `PROTECTION v1.1` field.
+- Reconfirm both required contexts are bound to GitHub Actions App `15368` and
+  repository rulesets remain empty.
+- Confirm Pull Request #1 remains open and unmerged, then stop.
 
-## Allowed scope
+## Out of scope and safety limits
 
-- Python project metadata and dependency declarations.
-- Minimal `src/` package foundation only where necessary for a meaningful
-  validation target.
-- Deterministic unit tests and test configuration.
-- Minimal lint/format configuration only after checking that no established
-  repository tool exists.
-- CI state/handoff updates required by the step-end protocol.
-
-## Out of scope
-
-- GitHub Actions workflow implementation; that is Step 2.
-- Device simulator behavior.
-- API implementation.
-- Supabase configuration, migrations, seed data, or database tests.
-- Product credential, role, telemetry-field, retention, or rate decisions.
-- Deployment and Hardware-in-the-Loop.
-
-## Required investigation
-
-- Reconfirm repository and Git state before changes.
-- Check current official Python packaging and pytest guidance relevant to the
-  chosen baseline.
-- Do not treat the locally installed Python version as an automatic project
-  requirement.
-
-## Validation
-
-Establish and execute exact commands for:
-
-- dependency installation in a clean isolated environment;
-- deterministic tests;
-- lint/format validation if such tooling is added.
-
-Expected result: every mandatory command passes without network, Docker,
-Supabase, secrets, or physical hardware after dependencies are installed.
+- Do not create another handoff commit merely to record this verification.
+- Do not resolve or dismiss the existing review conversation without separate
+  explicit authorization.
+- Do not merge or close Pull Request #1.
+- Do not change branch protection, add a ruleset, rename checks, alter workflow
+  commands, or add a coverage threshold.
+- Do not deploy, link, or mutate a remote Supabase project.
+- Do not begin another CI or Product step without explicit user direction.
 
 ## Stop condition
 
-After implementation, validation, state update, approved commit, and push.
-Do not start Step 2 in this session.
+After verifying the final handoff commit and unchanged protection, report that
+the planned CI sequence through Step 12 is complete and wait for user direction.

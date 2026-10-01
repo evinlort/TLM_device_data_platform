@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tlm-device-data-platform"
+version = "0.0.0"
+description = "TLM device data platform"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+test = [
+  "coverage==7.16.1",
+  "pytest==9.1.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+strict = true
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["tlm_device_data_platform"]
+
+[tool.coverage.report]
+show_missing = true

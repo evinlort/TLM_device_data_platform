@@ -26,7 +26,7 @@ simulator, Supabase configuration, or GitHub Actions workflow.
 
 ### Step 0 — Repository audit and CI state bootstrap
 
-Status: IN_PROGRESS
+Status: DONE
 
 Acceptance criteria:
 
@@ -40,7 +40,7 @@ Dependencies: none.
 
 ### Step 1 — Establish the Python validation baseline
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -56,7 +56,7 @@ Dependencies: Step 0.
 
 ### Step 2 — Add the Python GitHub Actions foundation
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -70,7 +70,7 @@ Dependencies: Step 1.
 
 ### Step 3 — Define deterministic simulator boundaries
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -83,7 +83,7 @@ Dependencies: Step 1.
 
 ### Step 4 — Add normal telemetry and contract scenarios
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -94,9 +94,27 @@ Acceptance criteria:
 
 Dependencies: Step 3.
 
+### Step 4.5 — Publish test result artifacts
+
+Status: DONE
+
+Acceptance criteria:
+
+- Produce a machine-readable JUnit XML report and a human-readable pytest log
+  without masking the pytest exit status.
+- Upload both files after the test step with the official
+  `actions/upload-artifact` action pinned to a verified full commit SHA.
+- Attempt the upload even when pytest fails, and fail clearly when the
+  expected result files are absent.
+- Verify that the artifact is available from the completed Pull Request run.
+- Use the repository's default artifact retention and do not turn artifact
+  retention into a product data-retention requirement.
+
+Dependencies: Step 4.
+
 ### Step 5 — Add duplicate, offline, and reconnect scenarios
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -105,11 +123,11 @@ Acceptance criteria:
 - Prove deterministic replay after reconnect, including a correctness-scale
   buffered burst.
 
-Dependencies: Step 4.
+Dependencies: Step 4.5.
 
 ### Step 6 — Add ordering, stream, and late-data scenarios
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -123,7 +141,7 @@ Dependencies: Step 5.
 
 ### Step 7 — Establish the local API/storage integration boundary
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -136,7 +154,7 @@ Dependencies: Steps 4-6 and relevant application architecture.
 
 ### Step 8 — Define the Supabase schema bootstrap strategy
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -145,11 +163,24 @@ Acceptance criteria:
 - Explain migration/bootstrap strategy before schema pull or implementation.
 - Perform no destructive operation against production.
 
+Implementation summary:
+
+- Repository inspection found no schema/configuration source and no authorized
+  remote schema source.
+- Stable Supabase CLI `2.118.0` is pinned as a project-scoped development tool
+  with Node.js 20 or later and a committed npm lock file.
+- `docs/ci/SUPABASE_SCHEMA_BOOTSTRAP.md` defines migrations as the future
+  source of truth, the authorized remote/greenfield bootstrap paths, local
+  rebuild contract, credential boundaries, and prohibited remote mutations.
+- No `supabase/config.toml`, migration, seed, table, role, RLS policy, remote
+  link, schema pull, Docker service, or database operation was created without
+  a verified schema source.
+
 Dependencies: Step 7 and user approval for any remote schema access.
 
 ### Step 9 — Add reproducible local database and database tests
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -158,11 +189,31 @@ Acceptance criteria:
 - Record authorization cases blocked by unresolved Product decisions rather
   than inventing policies.
 
-Dependencies: Step 8 and relevant Product decisions.
+Dependencies: committed and remotely verified Step 8, plus an explicitly
+authorized existing schema source or confirmed greenfield schema requirements.
+
+Implementation summary:
+
+- The authorized development project was inspected and cleaned to an empty
+  `public` application schema before local authoring; no production project was
+  involved and no application data existed.
+- The explicitly approved greenfield baseline creates only
+  `public.ingest_messages` with an identity `bigint` primary key and an opaque,
+  non-null `bytea` body.
+- RLS is enabled with no policies. `anon` and `authenticated` receive no table
+  access; `service_role` receives only the table and sequence privileges needed
+  to insert.
+- The locked Supabase CLI configuration targets PostgreSQL 17 locally, disables
+  implicit Data API grants for new tables, enables migrations, and disables
+  seed data.
+- An 18-assertion pgTAP test proves the approved shape, privileges, exact byte
+  round-trip, and permission for duplicate and empty byte strings.
+- Two clean local Supabase reset/test cycles passed. Existing Python validation
+  remains green, and required CI is unchanged until Step 10.
 
 ### Step 10 — Add the local integration CI job
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -173,9 +224,23 @@ Acceptance criteria:
 
 Dependencies: Steps 2, 7, and 9.
 
+Implementation summary:
+
+- Added a separate `Local Supabase integration` Pull Request job on a pinned
+  Ubuntu runner with explicit Node.js, Python, and job timeout configuration.
+- The job installs the exact project-scoped Supabase CLI, starts only the local
+  disposable stack, rebuilds the database from migrations, runs all 18 pgTAP
+  assertions, and runs the full 22-test Python suite over the existing real
+  loopback HTTP/storage boundary.
+- Cleanup runs with `always()`, and a separate artifact preserves only the
+  database-test and pytest result files; startup output containing local URLs
+  or credentials is not published.
+- No remote project, secret, physical hardware, schema change, provider-specific
+  Python adapter, or new Product behavior was added.
+
 ### Step 11 — Measure, document, and prepare branch protection
 
-Status: NOT_STARTED
+Status: DONE
 
 Acceptance criteria:
 
@@ -188,13 +253,96 @@ Acceptance criteria:
 
 Dependencies: stable completion of earlier CI steps.
 
+Implementation summary:
+
+- Added exact `coverage.py` `7.16.1` to the locked Python test environment and
+  configured statement plus branch measurement for the installed package.
+- Measured the complete 22-test suite at `88%` combined coverage: `253`
+  statements with `22` missed and `56` branches with `15` partial.
+- Added a Russian local testing and failure-diagnosis guide covering both
+  required jobs, artifacts, simulator fixtures, real loopback HTTP/storage,
+  migrations, pgTAP, extension rules, and open Product decisions.
+- Confirmed the stable check contexts `Python 3.11` and
+  `Local Supabase integration` across successful runs #21 and #22; both are
+  produced by GitHub Actions App `15368`.
+- Confirmed read-only that `main` has no branch protection and the repository
+  has no rulesets. No protection setting or Pull Request state changed.
+- No coverage threshold was proposed or enabled; the measured baseline is
+  evidence for a later policy decision, not a requirement.
+- Approved implementation commit
+  `55e8a18e7988445fffb4411a3648d4cdd6a629ae` was pushed and verified by
+  successful Pull Request run #23. Both jobs, every cleanup/post step, both
+  independently downloaded artifacts, check-provider identities, and the
+  unchanged unprotected/ruleset state were verified.
+
+### Step 12 — Apply explicitly approved branch protection
+
+Status: DONE
+
+Acceptance criteria:
+
+- Start only from a committed, pushed, and remotely verified final Step 11
+  handoff.
+- Obtain explicit user decisions for every branch-protection setting that will
+  be changed.
+- Require only the approved stable checks and bind them to the verified GitHub
+  Actions provider where supported.
+- Read back and verify the resulting protection without changing Product code,
+  CI semantics, coverage policy, or remote Supabase state.
+- Do not merge or close Pull Request #1 without separate explicit approval.
+
+Dependencies: Step 11 and explicit user approval of the exact protection
+configuration.
+
+Implementation summary:
+
+- Verified final Step 11 handoff commit
+  `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`, successful run #24, every job
+  step, both independently downloaded artifacts, stable check contexts, and
+  GitHub Actions provider `15368` before mutation.
+- Confirmed immediately before mutation that `main` had no protection and the
+  repository had no rulesets.
+- Obtained explicit approval for every proposed setting. The first approved
+  request was rejected atomically with HTTP `422` because the active GitHub API
+  schema does not accept `contexts` and `checks` together. Verified that no
+  setting changed, then obtained explicit approval for `PROTECTION v1.1`, which
+  only omitted the empty `contexts` member.
+- Applied one successful classic branch-protection request to `main`: strict
+  freshness, the two provider-bound CI checks, zero required approvals, admin
+  enforcement, required conversation resolution, no push restrictions or
+  bypass allowances, and all other reviewed boolean choices exactly as
+  approved.
+- Independent full and subresource read-backs match every approved field;
+  `main` reports protected, signed commits remain disabled, and rulesets remain
+  empty.
+- Pull Request #1 remains open and unmerged. The new conversation-resolution
+  requirement correctly exposes one old unresolved, outdated review thread and
+  therefore reports merge state `blocked`; the branch is not behind and both
+  required checks are successful. The thread was intentionally not mutated.
+- No Product, workflow, coverage, test, dependency, database, remote Supabase,
+  Pull Request content, or ruleset change was made.
+- Documentation and persistent handoff are prepared for a separately approved
+  documentation-only commit/push and exact remote validation.
+- Approved documentation commit
+  `0a71ad4cc852ba9c0699a1153f8e10d3ec6b0103` was pushed and verified by
+  successful Pull Request run #25. Both jobs and every main/post step passed.
+- Both exact-run artifacts were independently downloaded; their SHA-256
+  digests matched GitHub metadata, their file sets and test totals matched the
+  established contracts, and credential/hosted-endpoint scans were clean.
+- The final full protection read-back still matched `PROTECTION v1.1`, both
+  required checks remained bound to GitHub Actions App `15368`, repository
+  rulesets remained empty, and Pull Request #1 remained open and unmerged.
+- Step 12 is complete. Only the final documentation-only persistent handoff
+  still awaits separate commit/push approval; no later CI implementation step
+  is authorized.
+
 ## Dependency order
 
 `Step 0 -> Step 1 -> Step 2`
 
-`Step 1 -> Step 3 -> Step 4 -> Step 5 -> Step 6 -> Step 7`
+`Step 1 -> Step 3 -> Step 4 -> Step 4.5 -> Step 5 -> Step 6 -> Step 7`
 
-`Step 7 -> Step 8 -> Step 9 -> Step 10 -> Step 11`
+`Step 7 -> Step 8 -> Step 9 -> Step 10 -> Step 11 -> Step 12`
 
 The plan is a living document. Steps may be split when later repository facts
 show that a step is too large, but verified history must not be rewritten.

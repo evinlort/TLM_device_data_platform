@@ -80,3 +80,534 @@ Consequences:
 Source:
 
 `TLM GitHub CI — Codex Master Prompt (пошаговая работа между сессиями).md`
+
+## CI-DEC-004 — Initial default branch bootstrap
+
+Status: ACCEPTED
+
+Decision:
+
+Initialize remote `main` from the reviewed Step 0 root commit and use it as the
+GitHub default branch. Keep ongoing CI implementation work on
+`ci/github-actions-foundation` until changes are explicitly approved for
+merge.
+
+Reason:
+
+The new GitHub repository had no branches. Its first feature-branch push was
+temporarily selected as the default branch, while the agreed workflow requires
+a stable `main` base and feature-branch development.
+
+Consequences:
+
+- The approved Step 0 bootstrap is the initial `main` baseline.
+- New implementation commits are not made directly on `main`.
+- Pull Requests can target a stable default branch.
+
+Source:
+
+Step 0 repository initialization and the Git workflow requirements in
+`TLM GitHub CI — Codex Master Prompt (пошаговая работа между сессиями).md`.
+
+## CI-DEC-005 — Initial Python validation baseline
+
+Status: ACCEPTED
+
+Decision:
+
+Use Python 3.11 as the minimum supported Python version for the initial CI
+baseline. Define the project with `pyproject.toml`, a `src/` package layout,
+and a setuptools build backend. Use pinned pytest 9.1.1 with strict
+configuration and `importlib` import mode. Lock the resolved Python 3.11 test
+dependencies in `requirements/test.txt`.
+
+Reason:
+
+Python 3.11 remains supported upstream through October 2027 and is available
+for local verification. The PyPA and pytest documentation recommend
+`pyproject.toml`, isolated virtual environments, installed-package testing,
+the `src/` layout, and `importlib` import mode for new projects. Pinning the
+test environment makes the same baseline installable on a clean runner.
+
+Consequences:
+
+- Step 2 must install with
+  `python -m pip install --constraint requirements/test.txt '.[test]'` and run
+  `python -m pytest`.
+- Dependency updates must keep `pyproject.toml` and `requirements/test.txt`
+  consistent and must be revalidated in a clean environment.
+- The package version `0.0.0` is a non-release bootstrap placeholder. This
+  step makes no product release or versioning decision.
+- Additional supported Python versions and lint/type-check tools require
+  separate verified changes; they are not implied by this baseline.
+
+Source:
+
+Step 1 official Python Packaging User Guide, pytest documentation, and Python
+version-support review.
+
+## CI-DEC-006 — Detailed Russian step explanations
+
+Status: ACCEPTED
+
+Decision:
+
+After every completed and validated CI step, append a standalone,
+Russian-language explanation to `docs/ci/FLOW_EXPLANATIONS.md` before
+requesting approval to commit. Each explanation covers the reason for the
+step, the starting point, the implemented changes, the end-to-end flow, how
+the changes solve the stated goal, implementation events and problem
+resolution, validation and its meaning, and intentionally excluded scope.
+
+Reason:
+
+The compact plan and state files optimize safe cross-session continuation but
+do not provide enough teaching context for a reader to understand the complete
+technical flow and the reasoning behind it.
+
+Consequences:
+
+- `CI_STATE.md` remains the compact source of current verified state.
+- `FLOW_EXPLANATIONS.md` is append-only step history and explanation, not a
+  replacement for the plan, state, next-session handoff, or durable decisions.
+- A step is not ready for commit approval until its explanation has been
+  appended and checked against the implementation and validation evidence.
+- Explanations use Russian prose while preserving English source identifiers,
+  commands, filenames, and configuration keys.
+
+Source:
+
+Direct user instruction after Step 2.
+
+## CI-DEC-007 — Opaque deterministic simulator boundaries
+
+Status: ACCEPTED
+
+Decision:
+
+Define simulator dependencies as four structural Python protocols: generic
+sensor readings, a controllable clock, transport of opaque serialized `bytes`,
+and a FIFO durable queue of the same opaque messages. Keep deterministic fake
+implementations in project code for CI use. Use a temporary-file queue only to
+prove persistence across instances; do not treat it as production storage.
+
+Reason:
+
+Later CI scenarios need replaceable hardware, time, delivery, and buffering
+boundaries now, while the product telemetry schema, transport provider,
+retention, capacity, retry, and authorization semantics are still undecided.
+Opaque and minimal contracts permit deterministic tests without silently
+deciding those product questions.
+
+Consequences:
+
+- Product telemetry fields remain outside the Step 3 interfaces.
+- Tests configure readings, time, outcomes, messages, and temporary paths
+  explicitly.
+- Future scenarios may compose these protocols but must not interpret the
+  temporary file implementation as a production durability guarantee.
+- Retry, acknowledgement, replay, duplicate, reconnect, and overflow policies
+  require their own later steps or confirmed Product decisions.
+
+Source:
+
+Step 3 simulator-boundary implementation and the existing
+`CI-DEC-001`/`CI-DEC-002` constraints.
+
+## CI-DEC-008 — Explicitly test-only telemetry fixture contract
+
+Status: ACCEPTED
+
+Decision:
+
+Use a versioned JSON envelope only as a deterministic CI fixture contract.
+The fixture contains `schema_version`, `message_id`, `stream_id`,
+`sequence_no`, `recorded_at`, and `payload`, and fixture schema version `1` is
+the only supported test version. Serialize it deterministically to UTF-8
+`bytes`, validate its exact test shape, and report malformed data separately
+from unsupported fixture versions. Do not change the provider-independent
+transport boundary, which continues to carry opaque `bytes`.
+
+Reason:
+
+Step 4 needs stable normal, malformed, and version-rejection scenarios while
+Product Management has not confirmed the production telemetry envelope or its
+field semantics. An unmistakably fixture-specific contract permits meaningful
+CI coverage without presenting temporary test choices as product decisions.
+
+Consequences:
+
+- Every field name, value, type rule, and schema version in
+  `telemetry_fixture.py` remains test configuration rather than a production
+  requirement.
+- A future production contract requires separate confirmed requirements; it
+  must not silently adopt this fixture schema.
+- Later deterministic CI scenarios may compose the fixture fields, but doing
+  so does not define production acceptance, authorization, storage, retry,
+  idempotency, ordering, or current-state policy.
+- No JSON, schema, or validation concern leaks into the existing `Transport`
+  or `DurableQueue` protocols.
+
+Source:
+
+Step 4 telemetry-fixture implementation and the open Product decisions
+recorded in `CI_PLAN.md`.
+
+## CI-DEC-009 — Explicit test-only queued-delivery orchestration
+
+Status: ACCEPTED
+
+Decision:
+
+Use `flush_test_queue()` only as deterministic CI orchestration over the
+existing opaque `DurableQueue` and `Transport` boundaries. One explicit call
+attempts queued messages in FIFO order, removes a message only after the
+configured transport returns `True`, and stops at the first configured
+`False` while leaving that message queued. Tests model reconnect with a new
+transport and another explicit call. For the duplicate fixture scenario only,
+logical acceptance means retaining the first parsed fixture envelope for each
+fixture `message_id`.
+
+Reason:
+
+Step 5 must prove duplicate, unavailable-transport, reconnect, and replay
+behavior without inventing product retry timing, acknowledgement, storage,
+retention, capacity, or overflow semantics. Keeping orchestration explicit and
+fixture-named makes the test flow deterministic while preserving the existing
+provider-independent opaque-message boundary.
+
+Consequences:
+
+- `flush_test_queue()` is not a production retry loop or acknowledgement
+  protocol and performs no automatic retry, waiting, backoff, or reconnect.
+- The fixture `message_id` acceptance rule proves only logical idempotency in
+  the Step 5 test; it does not define a production unique key, database
+  constraint, storage result, or transport acknowledgement.
+- `TEST_CORRECTNESS_BURST_SIZE = 64` is test configuration for ordered replay,
+  not a product buffer size, capacity, performance target, scale claim, or
+  SLO.
+- Production offline guarantees and delivery policy remain open Product
+  decisions.
+
+Source:
+
+Step 5 deterministic delivery-scenario implementation and the existing
+`CI-DEC-001`, `CI-DEC-002`, `CI-DEC-007`, and `CI-DEC-008` constraints.
+
+## CI-DEC-010 — Explicit test stream activation and observation ordering
+
+Status: ACCEPTED
+
+Decision:
+
+Use `TelemetryFixtureProjection` only as deterministic test orchestration. It
+retains every parsed fixture envelope in observation order with a separately
+controlled `observed_at`, while its current-state view compares `sequence_no`
+only inside the stream explicitly activated by the test harness. A test stream
+change is an explicit harness event that resets the fixture current-state view
+without deleting history. Device-provided `recorded_at` never activates a
+stream and never selects current state.
+
+Reason:
+
+Step 6 must prove out-of-order, reboot/new-stream, late-data, and clock-skew
+scenarios while Product Management has not confirmed production history,
+current-state, stream identity, reboot, ordering, timestamp trust, or conflict
+resolution. Explicit activation and separate observation metadata make the
+scenarios deterministic without granting authority to device timestamps or
+silently defining production policy.
+
+Consequences:
+
+- `ObservedTelemetryFixture` and `TelemetryFixtureProjection` remain fixture
+  helpers, not a production repository, Storage Adapter, or API contract.
+- A lower sequence in the active fixture stream and any sequence in an
+  inactive fixture stream remain in history but cannot replace fixture current
+  state.
+- A newly activated fixture stream may start at sequence `1`; this proves only
+  the Step 6 scenario and does not define how production detects or authorizes
+  reboot or stream changes.
+- `recorded_at` is preserved as untrusted fixture data. Controlled
+  `observed_at` and `observation_no` describe test arrival without establishing
+  a production trusted-clock design.
+- Existing transport and queue boundaries remain opaque `bytes` and do not
+  parse or interpret fixture telemetry.
+
+Source:
+
+Step 6 deterministic ordering-scenario implementation and the existing
+`CI-DEC-001`, `CI-DEC-002`, `CI-DEC-007`, `CI-DEC-008`, and `CI-DEC-009`
+constraints.
+
+## CI-DEC-011 — Opaque provider-independent API/storage boundary
+
+Status: ACCEPTED
+
+Decision:
+
+Define the first application integration seam as a structural
+`StorageAdapter.store(message: bytes)` protocol. Exercise it through
+`OpaqueTelemetryAPI`, a minimal WSGI application that passes the exact HTTP
+request body to the adapter without parsing telemetry fields. Use
+`TemporaryDirectoryStorage` and a test-configured loopback route/status only
+for deterministic local CI.
+
+Reason:
+
+Step 7 must prove a real HTTP and storage integration flow while the production
+telemetry contract, API, acknowledgement, persistence provider, database
+schema, identity, and authorization rules remain unconfirmed. An opaque byte
+boundary connects the existing device-facing `Transport` to replaceable
+application storage without coupling device code to Supabase or turning test
+fixture fields into production requirements.
+
+Consequences:
+
+- `StorageAdapter` does not prescribe a database, table, schema, transaction,
+  identifier, idempotency rule, ordering rule, or acknowledgement policy.
+- `OpaqueTelemetryAPI` deliberately does not import or invoke fixture parsing;
+  interpretation may be added only behind separately confirmed contracts.
+- `/test-fixture-telemetry`, HTTP `204`, numbered local files, and the test
+  mapping from that status to `Transport.send() == True` are test
+  configuration, not production API or delivery semantics.
+- `TemporaryDirectoryStorage` proves a real filesystem boundary and reopening
+  behavior only; it is not production durability, concurrency, retention, or
+  database behavior.
+- Required CI needs no external service, Docker, secret, credential, Supabase,
+  PostgreSQL, or new Python dependency for this boundary.
+- Step 8 must define the Supabase/schema bootstrap strategy separately before
+  adding provider-specific schema or tooling.
+
+Source:
+
+Step 7 local HTTP/storage integration implementation and the existing
+`CI-DEC-001`, `CI-DEC-002`, `CI-DEC-007`, `CI-DEC-008`, `CI-DEC-009`, and
+`CI-DEC-010` constraints.
+
+## CI-DEC-012 — Migration-backed Supabase schema bootstrap
+
+Status: ACCEPTED
+
+Decision:
+
+Use ordered SQL files in `supabase/migrations/` as the version-controlled
+database source of truth once an authorized schema source exists. Pin the
+project-scoped Supabase CLI exactly and generate `supabase/config.toml` only
+when verified remote facts or approved greenfield requirements can be applied.
+For an existing remote project, capture one reviewed baseline through an
+explicitly authorized `db pull`; for a greenfield project, author only
+Product-approved SQL. Validate either path by rebuilding a disposable local
+database before any remote deployment.
+
+Reason:
+
+Step 8 found no repository schema and no explicitly authorized remote schema
+source. Current `supabase init` output includes PostgreSQL, Auth, API, Storage,
+and other defaults that could be mistaken for verified project settings.
+Creating configuration or an empty invented migration now would therefore
+record unverified facts without making the database reproducible.
+
+Consequences:
+
+- Supabase CLI `2.118.0` is an exact npm development dependency and Node.js 20
+  or later is the tool runtime baseline.
+- `supabase/config.toml`, baseline migrations, seeds, and database tests remain
+  absent until a real authorized schema source exists.
+- Remote credentials, passwords, connection strings, and generated `.temp`
+  state are never committed or published as CI artifacts.
+- `db pull` requires explicit target authorization because current CLI behavior
+  may offer to update remote migration history.
+- `db push`, `migration repair`, and accepted remote-history updates are
+  separate remote mutations and require separate authorization.
+- `db reset --linked` is prohibited for production and must never be automated.
+- Required Pull Request CI must rebuild only disposable local services and must
+  not depend on a production Supabase project or secret.
+
+Source:
+
+Step 8 repository inspection, official Supabase CLI/local-development and
+database-migration guidance verified on 2026-09-30, and the safety constraints
+in the TLM CI master prompt.
+
+## CI-DEC-013 — Minimal backend-only opaque ingress schema
+
+Status: ACCEPTED
+
+Decision:
+
+Create the greenfield table `public.ingest_messages` with exactly two columns:
+`id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` and `body bytea NOT NULL`.
+Enable RLS and define no policies. Deny `anon` and `authenticated` table access;
+grant `service_role` only `INSERT` on the table and `USAGE` on the identity
+sequence. Permit duplicate bodies and zero-length `bytea` values. Defer every
+richer Product semantic.
+
+Reason:
+
+The user confirmed that the authorized development project was unused and
+explicitly approved `PROPOSAL v1` as the first greenfield persistence boundary.
+It is the smallest database representation of the existing provider-independent
+`StorageAdapter.store(message: bytes)` contract. Storing opaque bytes allows a
+real local database test without adopting the test-only telemetry fixture as a
+production schema or deciding future identity, ordering, idempotency, retention,
+or read-access behavior.
+
+Consequences:
+
+- `supabase/migrations/20260930233000_create_ingest_messages.sql` is the first
+  migration in the version-controlled database source of truth.
+- `id` is only an internal surrogate key. It does not define message identity,
+  device ordering, arrival authority, acknowledgement, or conflict resolution.
+- `body` remains opaque and may be empty or equal to another row's body; the
+  database does not parse or deduplicate it.
+- RLS with no policies prevents `anon` and `authenticated` access. The
+  `service_role` grant supports only backend insertion and does not grant reads,
+  updates, or deletes.
+- No browser or device receives privileged database credentials. The existing
+  provider-independent API/storage boundary remains the intended seam.
+- Production telemetry fields, read paths, API exposure, authorization beyond
+  backend insertion, retention, and every additional table or constraint
+  require separate confirmed decisions and migrations.
+- Step 9 validates this migration only on disposable local databases. It does
+  not deploy it to the authorized development project.
+
+Source:
+
+The user's explicit approval of `PROPOSAL v1` during Step 9 and the existing
+`CI-DEC-002`, `CI-DEC-011`, and `CI-DEC-012` boundaries.
+
+## CI-DEC-014 — Separate disposable local integration job
+
+Status: ACCEPTED
+
+Decision:
+
+Run the Supabase lifecycle in a separate Pull Request job named
+`Local Supabase integration` on `ubuntu-24.04`, with exact Node.js and
+project-scoped Supabase CLI versions, a 30-minute timeout, and always-run local
+cleanup. Rebuild and test the migration, then execute the full existing Python
+suite while the local stack is running. Publish only pgTAP and pytest result
+files as a separate artifact. Do not add a provider-specific Python database
+adapter until its connection and credential boundary is confirmed.
+
+Reason:
+
+The existing `Python 3.11` job is already a stable required check and artifact
+contract. Database startup is slower and depends on a Docker-compatible runner,
+so isolating it keeps Python failures distinct and preserves the established
+check. The approved schema and the provider-independent API/storage flow can be
+validated together on one clean runner without choosing an unconfirmed
+PostgREST or PostgreSQL client contract.
+
+Consequences:
+
+- `CI / Python 3.11` remains unchanged.
+- `CI / Local Supabase integration` becomes the separate database/integration
+  check after remote validation.
+- The new job requires no GitHub secret, remote Supabase project, project link,
+  physical hardware, or production service.
+- Supabase startup output is suppressed so generated local URLs and credentials
+  are not retained in logs or artifacts.
+- The `local-integration-results` artifact contains only the pgTAP log and
+  pytest XML/log; it is not a production-data artifact or retention decision.
+- A provider-specific application adapter remains deferred until Product and
+  architecture confirm its connection, credential, transaction, and response
+  contract.
+
+Source:
+
+Step 10 workflow implementation, `CI-DEC-002`, `CI-DEC-011`, `CI-DEC-012`,
+`CI-DEC-013`, and official Supabase/GitHub runner guidance verified on
+2026-10-01.
+
+## CI-DEC-015 — Reproducible branch coverage baseline without a threshold
+
+Status: ACCEPTED
+
+Decision:
+
+Pin `coverage.py` `7.16.1` in the Python test environment and measure statement
+and branch coverage for the installed `tlm_device_data_platform` package. Keep
+the measurement reproducible through `pyproject.toml` and
+`requirements/test.txt`, but do not configure `fail_under` or make a coverage
+percentage a required Pull Request check.
+
+Reason:
+
+Step 11 measured the complete 22-test suite before considering a policy. The
+verified baseline is `88%` combined statement/branch coverage: `253`
+statements with `22` missed and `56` branches with `15` partial. A single
+measurement is useful evidence, but it does not establish an agreed quality
+threshold or prove that every currently uncovered error path should block a
+Pull Request.
+
+Consequences:
+
+- Developers can reproduce the same measurement with the locked test
+  environment and the commands documented in
+  `docs/ci/TESTING_AND_BRANCH_PROTECTION.md`.
+- `.coverage` remains generated local state and is not committed.
+- Coverage can guide meaningful new scenarios, but tests must not be added only
+  to increase a number or exclude inconvenient code without justification.
+- Any future threshold, coverage artifact, or required coverage check needs a
+  separate reviewed decision based on measured history.
+- This decision changes no Product behavior, test fixture semantics, database
+  schema, required check name, or branch-protection setting.
+
+Source:
+
+Step 11 clean-environment coverage measurement and Coverage.py guidance
+verified on 2026-10-01.
+
+## CI-DEC-016 — Provider-bound classic protection for `main`
+
+Status: ACCEPTED
+
+Decision:
+
+Protect `main` with GitHub classic branch protection. Require the check
+contexts `Python 3.11` and `Local Supabase integration`, each explicitly bound
+to GitHub Actions App `15368`, and require the Pull Request branch to be up to
+date before merge. Enable the Pull Request requirement with zero required
+approvals, no stale-review dismissal, no code-owner review requirement, and no
+last-push approval requirement. Enforce the rule for administrators, configure
+no push restriction or bypass allowance, and require review-conversation
+resolution. Do not require signed commits or linear history. Disallow force
+pushes and deletion; do not block branch creation, lock the branch, or enable
+fork syncing.
+
+Reason:
+
+The two checks were stable across successful Pull Request runs and were
+reconfirmed on the final Step 11 handoff commit with exact provider identity.
+Strict freshness prevents merging a result tested only against an older base.
+Zero required approvals preserves a workable Pull Request flow for this
+personal repository while conversation resolution prevents known review
+threads from being silently ignored. Administrator enforcement prevents the
+owner from bypassing the required CI contract. The remaining disabled options
+avoid adding signing, history-shape, push-restriction, or read-only policies
+that were not needed for the verified CI goal.
+
+Consequences:
+
+- A merge into `main` requires both named checks from GitHub Actions App
+  `15368` on an up-to-date branch.
+- Pull Requests do not require an approving reviewer, but every review
+  conversation must be resolved before merge.
+- The current Pull Request is reported as blocked because one old review thread
+  is unresolved even though it is outdated, the branch is not behind, and both
+  required checks are successful. Resolving that thread remains a separate
+  user action or separately authorized mutation.
+- Administrators are subject to the same protection; no actor is configured to
+  bypass Pull Request requirements and no actor-specific push restriction is
+  configured.
+- Coverage remains measured but is not a required check or threshold.
+- This decision does not authorize merging or closing Pull Request #1, changing
+  any workflow or check name, adding a ruleset, or changing Product or Supabase
+  state.
+
+Source:
+
+The user's explicit approvals of `PROTECTION v1` and the schema-corrected
+`PROTECTION v1.1`, GitHub API read-back on 2026-10-01, successful workflow run
+#24 on `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`, and `CI-DEC-015`.
