@@ -213,7 +213,7 @@ Implementation summary:
 
 ### Step 10 — Add the local integration CI job
 
-Status: READY_FOR_COMMIT
+Status: DONE
 
 Acceptance criteria:
 

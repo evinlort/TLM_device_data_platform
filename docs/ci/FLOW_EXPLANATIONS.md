@@ -3475,3 +3475,57 @@ Step 10 ещё не считается `DONE`: сначала требуется
 jobs и каждый их step, скачать `pytest-results-python-3.11` и
 `local-integration-results`, сверить digests и содержимое и только затем
 финализировать remote handoff. Step 11 в этой сессии не начинается.
+
+### Удалённая проверка и завершение шага
+
+После явного разрешения пользователя реализация Step 10 была сохранена коммитом
+`08b10d5eb0c450251fe23e3618a6d93ac7ac4aaa` с сообщением
+`ci: add local Supabase integration job` и отправлена в
+`ci/github-actions-foundation`. Local HEAD, remote-tracking branch и head Pull
+Request #1 совпали с этим exact commit. Pull Request остался открытым,
+нечерновым, mergeable и направленным в `main`.
+
+GitHub Actions создал workflow `CI`, run #21 с ID `36871919192`. Run завершился
+со статусом `success`. Существующий job `Python 3.11`, ID `110401569886`, прошёл
+за `11s`; новый job `Local Supabase integration`, ID `110401569122`, прошёл за
+`2m31s`. У обоих jobs каждый основной и post step завершился с conclusion
+`success`. В новом job это включает exact Supabase CLI assertion, startup
+локального stack, чистый database reset, pgTAP, полный pytest, cleanup с
+`always()`, проверку результатов и upload artifact. Поэтому remote runner
+подтвердил не только happy-path tests, но и реальный порядок disposable
+lifecycle вместе с cleanup до валидации и публикации результатов.
+
+Из run были скачаны и проверены оба обязательных artifacts:
+
+- `pytest-results-python-3.11`, ID `11168265241`, archive size `1488` bytes.
+  GitHub digest и независимо вычисленный digest скачанного архива совпали:
+  `sha256:5d7feafde9d9f3dbbb641b6be15c4985080bfeb02653e692207dc378eee1ca91`.
+  Внутри находятся ровно `pytest.log` (`961` bytes) и `pytest.xml` (`3481`
+  bytes). JUnit содержит `22` tests, `0` failures, `0` errors, `0` skipped; log
+  заканчивается `22 passed in 0.21s`.
+- `local-integration-results`, ID `11167561341`, archive size `2236` bytes.
+  GitHub digest и независимо вычисленный digest также совпали:
+  `sha256:f52c7b1f8fa38275ae7afc4d6267c6f2c8a8a0b3476eefd2e17d5adddc1793bc`.
+  Внутри находятся ровно `database-tests.log` (`1395` bytes), `pytest.log`
+  (`979` bytes) и `pytest.xml` (`3481` bytes). Database log сообщает
+  `Files=1, Tests=18` и `Result: PASS`; JUnit содержит `22` tests без failures,
+  errors или skipped, а pytest log заканчивается `22 passed in 0.19s`.
+
+Полные логи нового job и распакованные artifacts были отдельно проверены на
+hosted project URL, database URL, project reference, generated local connection
+URL, keys, passwords, tokens и secrets; совпадений не найдено. Упоминание в
+database log доступной версии CLI `2.119.0` является только upstream notice:
+проект намеренно остаётся воспроизводимо закреплён на `2.118.0`, и обновление
+версии не входит в Step 10.
+
+Таким образом, удалённая проверка доказывает, что оба стабильных check names —
+`CI / Python 3.11` и `CI / Local Supabase integration` — зелёные на exact
+implementation commit, оба artifact contracts выполнены, cleanup сработал, а
+required CI не зависит от физического устройства, production Supabase или
+секретов. Step 10 переведён в `DONE`; completion blocker отсутствует.
+
+Финальный persistent handoff является отдельным documentation-only изменением и
+требует отдельного явного разрешения на commit/push. Созданный им workflow run
+должен быть проверен в начале следующей сессии до любых изменений Step 11, чтобы
+не создавать бесконечную цепочку self-referential handoff commits. Step 11 в
+этой сессии не начинался.

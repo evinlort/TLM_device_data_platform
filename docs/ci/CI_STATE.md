@@ -3,8 +3,10 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Starting HEAD for Step 10 and current committed HEAD:
+- Starting HEAD for Step 10:
   `581d389c9b5072f80cb5eb2409b32a3716e09627`.
+- Current committed HEAD and Step 10 implementation commit:
+  `08b10d5eb0c450251fe23e3618a6d93ac7ac4aaa`.
 - Step 9 implementation commit:
   `2e46cd6baf5dc013a64b3c0fdde54e34acb11f01`.
 - Remote: `origin` is
@@ -15,15 +17,16 @@
   is open, mergeable, and points from `ci/github-actions-foundation` to `main`.
 - Starting branch, remote-tracking branch, and Pull Request head all matched the
   current committed HEAD before Step 10 changes.
-- Working tree: contains only the reviewed, uncommitted Step 10 workflow and
-  persistent handoff changes listed below.
+- Working tree: contains only the final, uncommitted Step 10 persistent handoff
+  update after successful remote validation.
 
 ## Current milestone
 
 - Step: Step 10 — Add the local integration CI job.
-- Status: READY_FOR_COMMIT.
-- Completion blocker: explicit user approval to commit and push, followed by
-  remote validation of both Pull Request jobs and both result artifacts.
+- Status: DONE.
+- Completion blocker: none. The final persistent handoff update still requires
+  separate explicit user approval before its documentation-only commit and
+  push.
 
 ## Verified starting state
 
@@ -162,7 +165,7 @@ does not define Product ordering, and `body` remains opaque.
 - Final documentation/status consistency, action-pin structure,
   generated-state, secret, whitespace, and diff checks: PASS.
 
-## Remote activation validation
+## Step 10 starting-state remote validation
 
 - Commit: `581d389c9b5072f80cb5eb2409b32a3716e09627`.
 - Local HEAD, remote-tracking branch, and Pull Request head matched that commit.
@@ -178,16 +181,53 @@ does not define Product ordering, and `body` remains opaque.
   `pytest.xml` (`3481` bytes) and `pytest.log` (`961` bytes).
 - Downloaded JUnit XML: `22` tests, `0` failures, `0` errors, `0` skipped.
 - Downloaded pytest log: PASS; final summary is `22 passed in 0.61s`.
-- This run proves the exact Step 10 starting commit and existing Python artifact
-  contract. Remote validation of the new local integration job is pending commit
-  approval and push.
+- This run proved the exact Step 10 starting commit and existing Python artifact
+  contract before the implementation changed the workflow.
+
+## Remote Step 10 validation
+
+- Implementation commit:
+  `08b10d5eb0c450251fe23e3618a6d93ac7ac4aaa`.
+- Local HEAD, remote-tracking branch, and Pull Request head matched that exact
+  commit. Pull Request #1 remained open, non-draft, mergeable, and targeted
+  `main`.
+- Workflow: `CI`, run ID `36871919192`, run number `21`, conclusion `success`.
+- Existing job: `Python 3.11`, ID `110401569886`, duration `11s`. Checkout,
+  Python setup, locked install, `pip check`, pytest, result validation, artifact
+  upload, and all post steps completed with conclusion `success`.
+- New job: `Local Supabase integration`, ID `110401569122`, duration `2m31s`.
+  Checkout, Node and Python setup, locked installs, exact CLI assertion, local
+  Supabase start, database reset, pgTAP, full pytest, unconditional cleanup,
+  result validation, artifact upload, and all post steps completed with
+  conclusion `success`.
+- Artifact `pytest-results-python-3.11`, ID `11168265241`, contained exactly
+  non-empty `pytest.log` (`961` bytes) and `pytest.xml` (`3481` bytes). Its
+  archive size was `1488` bytes; GitHub and an independent streamed download
+  both reported
+  `sha256:5d7feafde9d9f3dbbb641b6be15c4985080bfeb02653e692207dc378eee1ca91`.
+- The existing-job JUnit totals were `22` tests, `0` failures, `0` errors, and
+  `0` skipped; its log ended with `22 passed in 0.21s`.
+- Artifact `local-integration-results`, ID `11167561341`, contained exactly
+  non-empty `database-tests.log` (`1395` bytes), `pytest.log` (`979` bytes),
+  and `pytest.xml` (`3481` bytes). Its archive size was `2236` bytes; GitHub and
+  an independent streamed download both reported
+  `sha256:f52c7b1f8fa38275ae7afc4d6267c6f2c8a8a0b3476eefd2e17d5adddc1793bc`.
+- The integration JUnit totals were `22` tests, `0` failures, `0` errors, and
+  `0` skipped; its pytest log ended with `22 passed in 0.19s`. The database log
+  reported `Files=1, Tests=18` and `Result: PASS`.
+- Artifact and complete new-job log scans found no hosted project URL, database
+  URL, project reference, generated local connection URL, key, password, token,
+  or secret. The database log's notice that CLI `2.119.0` exists does not change
+  the intentional project lock at `2.118.0`.
+- Successful `Cleanup local Supabase` and every subsequent step prove that the
+  clean hosted runner completed the disposable lifecycle and preserved both
+  required result contracts without a remote Supabase dependency.
 
 ## Required CI
 
 - Pull Request workflow: `.github/workflows/ci.yml`.
 - Required Python job: `CI / Python 3.11`.
-- Proposed new required database/integration job after remote validation:
-  `CI / Local Supabase integration`.
+- Required database/integration job: `CI / Local Supabase integration`.
 - Local Python reproduction:
   - `.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'`
   - `.venv/bin/python -m pip check`
@@ -232,9 +272,10 @@ configuration, migration, or database test changed.
 ## Next step
 
 - Step: Step 11 — Measure, document, and prepare branch protection.
-- Activation requires the reviewed Step 10 changes to be committed and pushed,
-  both Pull Request jobs to succeed on the exact commit, and both published
-  result artifacts to be downloaded and inspected.
+- Activation requires the final Step 10 handoff update to be committed and
+  pushed, both Pull Request jobs to succeed on that exact final handoff commit,
+  and both published result artifacts to be downloaded and inspected in the
+  next session.
 - Do not enable branch protection or merge the Pull Request without separate
   explicit user approval.
 

@@ -2,12 +2,14 @@
 
 ## Activation condition
 
-Step 11 may start only after the reviewed Step 10 changes are committed and
-pushed, both Pull Request jobs succeed on the exact pushed commit, and every
-published required result artifact is downloaded and inspected. Verify the
-actual branch, HEAD, remote, clean working tree, Pull Request, job details,
-artifact listings, digests, and downloaded contents against
-`docs/ci/CI_STATE.md` before any change.
+Step 11 may start only after the final Step 10 persistent handoff update is
+committed and pushed, both Pull Request jobs succeed on that exact final handoff
+commit, and every published required result artifact is downloaded and
+inspected. Verify the actual branch, HEAD, remote, clean working tree, Pull
+Request, job details, artifact listings, digests, and downloaded contents
+against `docs/ci/CI_STATE.md` before any change. The implementation evidence
+recorded there belongs to run #21; the next session must independently validate
+the later run created by the final handoff commit.
 
 The local integration job must remain independent of physical hardware, remote
 Supabase projects, credentials, and production services. Do not treat a local
