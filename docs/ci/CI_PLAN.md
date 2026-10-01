@@ -240,7 +240,7 @@ Implementation summary:
 
 ### Step 11 — Measure, document, and prepare branch protection
 
-Status: READY_FOR_COMMIT
+Status: DONE
 
 Acceptance criteria:
 
@@ -269,6 +269,11 @@ Implementation summary:
   has no rulesets. No protection setting or Pull Request state changed.
 - No coverage threshold was proposed or enabled; the measured baseline is
   evidence for a later policy decision, not a requirement.
+- Approved implementation commit
+  `55e8a18e7988445fffb4411a3648d4cdd6a629ae` was pushed and verified by
+  successful Pull Request run #23. Both jobs, every cleanup/post step, both
+  independently downloaded artifacts, check-provider identities, and the
+  unchanged unprotected/ruleset state were verified.
 
 ### Step 12 — Apply explicitly approved branch protection
 

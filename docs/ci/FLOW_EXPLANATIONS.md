@@ -3754,3 +3754,63 @@ HEAD, remote-tracking branch и Pull Request head, дождаться обоих
 digests и проверить точный состав и test totals. Только затем можно обновить
 remote handoff и отдельно запросить разрешение на его documentation-only
 commit/push. Никакая настройка branch protection в этой сессии не выполняется.
+
+### Удалённая проверка и завершение шага
+
+После явного разрешения пользователя изменения Step 11 были сохранены коммитом
+`55e8a18e7988445fffb4411a3648d4cdd6a629ae` с сообщением
+`ci: document testing and coverage baseline` и отправлены в
+`ci/github-actions-foundation`. Local HEAD, remote-tracking branch и head Pull
+Request #1 совпали с этим exact commit. Pull Request остался открытым,
+non-draft, mergeable и направленным в `main`.
+
+GitHub Actions создал workflow `CI`, run #23 с ID `36890182877`. Run завершился
+`success`. Job `Python 3.11`, ID `110463533621`, прошёл за 19 секунд. Job
+`Local Supabase integration`, ID `110463533001`, прошёл за 2 минуты 41 секунду.
+У обоих jobs каждый setup, install, validation, test, artifact, cleanup и post
+step завершился с conclusion `success`. Для integration job это отдельно
+подтверждает clean database reset, 18 pgTAP assertions, полный Python suite и
+успешный `supabase stop --no-backup` до проверки и upload result files.
+
+Check runs на exact implementation commit ещё раз подтвердили два контекста:
+`Python 3.11` и `Local Supabase integration`. Оба завершились успешно и были
+созданы GitHub Actions App `15368`. `Sourcery review` принадлежал стороннему App
+`48477`, имел conclusion `skipped` и не включался в required CI proposal.
+
+Из run #23 были скачаны и независимо проверены оба artifacts:
+
+- `pytest-results-python-3.11`, ID `11176261987`, archive size 1494 bytes.
+  GitHub digest и SHA-256 фактически скачанного ZIP совпали:
+  `sha256:4d969634cf135ac9c623fe0e68d5e6e9cf48f28a3b1dcf1762f9fab6663d0acd`.
+  Архив содержит ровно непустые `pytest.xml` размером 3481 bytes и
+  `pytest.log` размером 961 bytes. JUnit сообщает 22 tests, 0 failures,
+  0 errors и 0 skipped; log заканчивается `22 passed in 0.26s`.
+- `local-integration-results`, ID `11175808418`, archive size 2230 bytes.
+  GitHub digest и SHA-256 скачанного ZIP также совпали:
+  `sha256:3eb50ab646a7bdac7a39dab8d71525b3a00aa8ea9d0bf7aa5bead15b68d2a6d0`.
+  Архив содержит ровно непустые `database-tests.log` размером 1362 bytes,
+  `pytest.xml` размером 3481 bytes и `pytest.log` размером 979 bytes. Database
+  log сообщает `Files=1, Tests=18` и `Result: PASS`; JUnit сообщает 22 tests,
+  0 failures, 0 errors и 0 skipped; pytest log заканчивается
+  `22 passed in 0.35s`.
+
+Распакованные artifacts были проверены на hosted database URL, generated local
+endpoint, token, key и credential patterns; совпадений не найдено. После
+проверки одноразовый download directory был удалён.
+
+Финальные read-only GitHub запросы снова вернули `404 Branch not protected` для
+`main` и пустой список repository rulesets. Следовательно, Step 11 не изменил
+repository governance. GitHub также показал informational annotation о начале
+миграции label `ubuntu-latest` на Ubuntu 26 с 2026-10-19. Exact run #23 прошёл;
+изменение существующего Python runner не входило в Step 11 и не было сделано.
+
+Удалённая проверка доказывает, что изменение test dependency не нарушило ни
+один required flow, оба artifact contracts сохранены, а подтверждённые check
+contexts и provider identity стабильны на implementation commit. Step 11
+переведён в `DONE`; completion blocker отсутствует.
+
+Текущий final persistent handoff является отдельным documentation-only
+изменением и требует нового явного разрешения на commit/push. Возникший после
+него run должен быть проверен в начале следующей сессии до активации Step 12,
+как требует `NEXT_SESSION.md`. Это предотвращает бесконечную цепочку handoff
+commits и не означает начало настройки branch protection в текущей сессии.

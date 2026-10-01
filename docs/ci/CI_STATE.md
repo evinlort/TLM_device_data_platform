@@ -3,8 +3,10 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Starting and current committed HEAD for Step 11:
+- Starting committed HEAD for Step 11:
   `5c11432939c3efe17f8189d09e64042e03d60822`.
+- Step 11 implementation commit and current committed HEAD:
+  `55e8a18e7988445fffb4411a3648d4cdd6a629ae`.
 - Final Step 10 handoff commit:
   `5c11432939c3efe17f8189d09e64042e03d60822`.
 - Step 10 implementation commit:
@@ -19,16 +21,19 @@
   is open, mergeable, and points from `ci/github-actions-foundation` to `main`.
 - Starting branch, remote-tracking branch, and Pull Request head all matched
   `5c11432939c3efe17f8189d09e64042e03d60822` before Step 11 changes.
-- Working tree: contains the uncommitted Step 11 measurement, documentation,
-  dependency, ignore, decision, and persistent handoff changes listed below.
+- After the approved implementation push, local HEAD, remote-tracking branch,
+  and Pull Request head all match
+  `55e8a18e7988445fffb4411a3648d4cdd6a629ae`.
+- Working tree: contains only this uncommitted final Step 11 persistent handoff
+  update.
 
 ## Current milestone
 
 - Step: Step 11 — Measure, document, and prepare branch protection.
-- Status: READY_FOR_COMMIT.
-- Completion blocker: explicit user approval is required before commit/push;
-  remote validation of the resulting exact commit and both artifacts must then
-  complete before Step 11 can become `DONE`.
+- Status: DONE.
+- Completion blocker: none. The final documentation-only handoff update still
+  requires separate explicit approval before commit/push; Step 12 remains
+  inactive until that final handoff commit is remotely verified.
 
 ## Verified starting state
 
@@ -296,6 +301,52 @@ does not define Product ordering, and `body` remains opaque.
 - Successful `Cleanup local Supabase` and every subsequent step prove that the
   clean hosted runner completed the disposable lifecycle and preserved both
   required result contracts without a remote Supabase dependency.
+
+## Remote Step 11 validation
+
+- Implementation commit:
+  `55e8a18e7988445fffb4411a3648d4cdd6a629ae`, message
+  `ci: document testing and coverage baseline`.
+- Local HEAD, remote-tracking branch, and Pull Request head matched that exact
+  commit. Pull Request #1 remained open, non-draft, mergeable, and targeted
+  `main`.
+- Workflow: `CI`, run ID `36890182877`, run number `23`, conclusion `success`.
+- Job `Python 3.11`, ID `110463533621`, duration `19s`: every setup, locked
+  install, dependency check, pytest, result validation, artifact upload, post,
+  and completion step concluded `success`.
+- Job `Local Supabase integration`, ID `110463533001`, duration `2m41s`: every
+  Node/Python setup, locked install, exact CLI check, local startup, database
+  reset, pgTAP, Python flow, unconditional cleanup, result validation,
+  artifact upload, post, and completion step concluded `success`.
+- Exact-commit check runs reconfirmed contexts `Python 3.11` and
+  `Local Supabase integration`, both completed successfully and both produced
+  by GitHub Actions App `15368`. Third-party `Sourcery review` was skipped and
+  remains outside required CI.
+- Artifact `pytest-results-python-3.11`, ID `11176261987`, archive size `1494`
+  bytes, was not expired. GitHub metadata and the independently downloaded ZIP
+  both reported
+  `sha256:4d969634cf135ac9c623fe0e68d5e6e9cf48f28a3b1dcf1762f9fab6663d0acd`.
+  It contained exactly non-empty `pytest.xml` (`3481` bytes) and `pytest.log`
+  (`961` bytes); JUnit totals were `22` tests, `0` failures, `0` errors, and
+  `0` skipped, and the log ended with `22 passed in 0.26s`.
+- Artifact `local-integration-results`, ID `11175808418`, archive size `2230`
+  bytes, was not expired. GitHub metadata and the independently downloaded ZIP
+  both reported
+  `sha256:3eb50ab646a7bdac7a39dab8d71525b3a00aa8ea9d0bf7aa5bead15b68d2a6d0`.
+  It contained exactly non-empty `database-tests.log` (`1362` bytes),
+  `pytest.xml` (`3481` bytes), and `pytest.log` (`979` bytes). The database log
+  reported `Files=1, Tests=18` and `Result: PASS`; JUnit totals were `22`
+  tests, `0` failures, `0` errors, and `0` skipped; pytest ended with
+  `22 passed in 0.35s`.
+- Downloaded artifact scans found no hosted database URL, generated local
+  endpoint, token, key, or credential. The disposable download directory was
+  removed after inspection.
+- Final read-only checks still returned `404 Branch not protected` for `main`
+  and an empty repository-ruleset list. No GitHub repository setting or Pull
+  Request state changed during Step 11.
+- GitHub emitted an informational annotation that `ubuntu-latest` will begin
+  migrating to Ubuntu 26 on `2026-10-19`. The current exact run was successful;
+  changing the existing Python job runner was outside Step 11.
 
 ## Required CI
 
