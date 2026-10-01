@@ -73,13 +73,15 @@ class PostgresTelemetryRepository:
                     raise AuthenticationFailed
                 if credential["device_id"] != message.device_id:
                     raise DeviceMismatch
+                # Both unique indexes may race for an identical concurrent retry.
+                # Handle either here, then distinguish duplicates from conflicts by PK.
                 inserted = connection.execute("""
                     INSERT INTO tlm.telemetry_messages
                         (device_id, message_id, schema_version, stream_id,
                          sequence_no, captured_at, payload)
                     VALUES (%(device_id)s, %(message_id)s, 1, %(stream_id)s,
                             %(sequence_no)s, %(captured_at)s, %(payload)s)
-                    ON CONFLICT (device_id, message_id) DO NOTHING
+                    ON CONFLICT DO NOTHING
                     RETURNING received_at
                 """, params).fetchone()
                 if inserted is not None:
@@ -87,6 +89,7 @@ class PostgresTelemetryRepository:
                                             inserted["received_at"], False)
                 else:
                     # A separate READ COMMITTED statement sees a concurrent winner.
+                    # No matching PK means another message occupied the stream position.
                     existing = connection.execute("""
                         SELECT received_at,
                                schema_version = 1 AND stream_id = %(stream_id)s
@@ -102,10 +105,6 @@ class PostgresTelemetryRepository:
                                             existing["received_at"], True)
             # The connection context has committed successfully before any ACK.
             return receipt
-        except psycopg.errors.UniqueViolation as error:
-            if error.diag.constraint_name == "telemetry_stream_sequence_uk":
-                raise MessageConflict from None
-            raise StorageUnavailable from None
         except psycopg.Error as error:
             # Never log the connection string, token, request body or error detail.
             _LOG.error("Persistence failed (%s)", type(error).__name__)
