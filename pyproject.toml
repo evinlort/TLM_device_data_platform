@@ -10,9 +10,18 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
+server = [
+  "fastapi==0.128.2",
+  "uvicorn==0.48.0",
+  "psycopg[binary]==3.3.3",
+]
 test = [
   "coverage==7.16.1",
   "pytest==9.1.1",
+  "fastapi==0.128.2",
+  "uvicorn==0.48.0",
+  "psycopg[binary]==3.3.3",
+  "httpx==0.28.1",
 ]
 
 [tool.setuptools.packages.find]
@@ -22,6 +31,7 @@ where = ["src"]
 addopts = ["--import-mode=importlib"]
 strict = true
 testpaths = ["tests"]
+markers = ["database: requires a disposable loopback PostgreSQL instance"]
 
 [tool.coverage.run]
 branch = true
