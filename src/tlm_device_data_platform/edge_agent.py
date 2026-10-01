@@ -5,6 +5,7 @@ import argparse
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from http.client import HTTPException
 import importlib
 import json
 import logging
@@ -146,7 +147,7 @@ class HTTPSender:
                 if status in (400, 409, 413, 422):
                     return Delivery("quarantine", f"http_{status}")
                 raise FatalDelivery("Credential, endpoint or redirect rejected; queue preserved")
-        except (URLError, TimeoutError, OSError):
+        except (URLError, HTTPException, TimeoutError, OSError):
             return Delivery("retry", "network_error")
 
 
