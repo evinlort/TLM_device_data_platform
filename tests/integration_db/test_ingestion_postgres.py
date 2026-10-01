@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
-from threading import Event, Thread
+from threading import Barrier, Event, Thread
 from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -25,6 +25,11 @@ from tlm_device_data_platform.postgres_ingestion import PostgresTelemetryReposit
 from tlm_device_data_platform.telemetry_v1 import StorageUnavailable, TelemetryV1
 
 pytestmark = pytest.mark.database
+
+
+class PrivateTestDatabase(SimpleNamespace):
+    def __repr__(self):
+        return "<DisposableTestDatabase: credentials redacted>"
 
 
 @contextmanager
@@ -90,7 +95,7 @@ def database():
             message = TelemetryV1(device_id, uuid4(), uuid4(), 1,
                                   datetime(2026, 10, 2, tzinfo=timezone.utc),
                                   {"test_temperature": 21.5, "test_distance": 123})
-            yield SimpleNamespace(admin=admin, admin_dsn=admin_dsn, runtime_dsn=runtime_dsn,
+            yield PrivateTestDatabase(admin=admin, admin_dsn=admin_dsn, runtime_dsn=runtime_dsn,
                 token=token, message=message, other_device=other_device,
                 repository=PostgresTelemetryRepository(runtime_dsn))
         finally:
@@ -110,10 +115,15 @@ def test_real_http_commits_exact_readings(database):
         assert receipt["status"] == "stored"
 
 
-def test_concurrent_retries_create_exactly_one_row(database):
+@pytest.mark.parametrize("round_no", range(5))
+def test_concurrent_retries_create_exactly_one_row(database, round_no):
     with serve(database.repository) as url:
+        barrier = Barrier(4)
+        def synchronized_post(_):
+            barrier.wait(timeout=5)
+            return post(url, database.token, database.message)
         with ThreadPoolExecutor(max_workers=4) as workers:
-            results = list(workers.map(lambda _: post(url, database.token, database.message), range(4)))
+            results = list(workers.map(synchronized_post, range(4)))
         assert sorted(status for status, _ in results) == [200, 200, 200, 201]
         assert len({receipt["received_at"] for _, receipt in results}) == 1
         assert database.admin.execute("SELECT count(*) FROM tlm.telemetry_messages WHERE device_id = %s",
@@ -121,7 +131,7 @@ def test_concurrent_retries_create_exactly_one_row(database):
 
 
 def test_replay_after_unobserved_ack_and_conflicting_payload(database):
-    database.repository.accept(database.token, database.message)  # Sender did not observe this receipt.
+    database.repository.accept(database.token, database.message)
     with serve(database.repository) as url:
         assert post(url, database.token, database.message)[0] == 200
         changed = replace(database.message, payload={"test_temperature": 99})
@@ -179,7 +189,7 @@ def test_admin_identity_is_rejected_by_runtime_guard(database):
 
 def test_unreachable_database_returns_503_not_ack(database):
     with socket.socket() as blocked:
-        blocked.bind(("127.0.0.1", 0))  # Bound but not listening: deterministic refused connection.
+        blocked.bind(("127.0.0.1", 0))
         dsn = make_conninfo(database.runtime_dsn, port=blocked.getsockname()[1])
         with serve(PostgresTelemetryRepository(dsn)) as url:
             assert post(url, database.token, database.message)[0] == 503
@@ -194,3 +204,49 @@ def test_reboot_and_late_old_stream_keep_history(database):
             assert post(url, database.token, message)[0] == 201
     assert database.admin.execute("SELECT count(*) FROM tlm.telemetry_messages WHERE device_id = %s",
                                   (old.device_id,)).fetchone()[0] == 3
+
+
+def test_edge_outbox_reconnect_crosses_real_http_and_database(database, tmp_path):
+    from tlm_device_data_platform.edge_agent import Delivery, HTTPSender, Outbox, deliver_one
+    queue_path = tmp_path / "outbox.sqlite3"
+    outbox = Outbox(queue_path, database.message.device_id)
+    original = database.message.to_bytes()
+    outbox.enqueue(original)
+    class OfflineSender:
+        def send(self, body):
+            assert body == original
+            return Delivery("retry", "test_offline")
+    assert deliver_one(outbox, OfflineSender()).action == "retry"
+    reopened = Outbox(queue_path, database.message.device_id)
+    assert reopened.oldest()[1] == original
+    with serve(database.repository) as url:
+        sender = HTTPSender(url, database.token, allow_insecure_http=True)
+        assert deliver_one(reopened, sender).action == "ack"
+    assert reopened.oldest() is None
+    assert database.admin.execute("SELECT payload FROM tlm.telemetry_messages WHERE device_id = %s",
+                                  (database.message.device_id,)).fetchone()[0] == dict(database.message.payload)
+
+
+def test_provisioned_device_and_runtime_work_end_to_end(database, tmp_path):
+    from tlm_device_data_platform.private_config import load_private_config
+    from tlm_device_data_platform.provision import provision_device, provision_runtime
+    login = "tlm_api_" + uuid4().hex
+    device_id = uuid4()
+    runtime_file = tmp_path / "runtime.secret.json"
+    device_file = tmp_path / "device.secret.json"
+    try:
+        provision_runtime(database.admin_dsn, runtime_file, role=login)
+        provision_device(database.admin_dsn, device_file, system_type="test-provisioned", device_id=device_id)
+        runtime = load_private_config(runtime_file, {"TLM_DATABASE_DSN"})
+        device = load_private_config(device_file, {"TLM_DEVICE_ID", "TLM_DEVICE_TOKEN"})
+        repository = PostgresTelemetryRepository(runtime["TLM_DATABASE_DSN"])
+        message = replace(database.message, device_id=device_id, message_id=uuid4())
+        with serve(repository) as url:
+            assert post(url, device["TLM_DEVICE_TOKEN"], message)[0] == 201
+        with pytest.raises(FileExistsError):
+            provision_device(database.admin_dsn, device_file, system_type="test-provisioned", device_id=uuid4())
+    finally:
+        for table in ("telemetry_messages", "device_credentials", "devices"):
+            database.admin.execute(sql.SQL("DELETE FROM tlm.{} WHERE device_id = %s")
+                                   .format(sql.Identifier(table)), (device_id,))
+        database.admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(login)))
