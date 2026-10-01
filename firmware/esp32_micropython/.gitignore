@@ -1,0 +1,8 @@
+config.secret.json
+*.secret.json
+ca.pem
+*.key
+*.bin
+*.mpy
+__pycache__/
+tlm-outbox/
