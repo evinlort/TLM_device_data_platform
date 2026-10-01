@@ -2,19 +2,21 @@
 
 ## Activation condition
 
-Step 10 may start only after Step 9 is committed, pushed, successful in the
-Pull Request workflow, and the published Python test-results artifact has been
-downloaded and inspected. Verify the actual branch, HEAD, remote, clean working
-tree, Pull Request, latest required CI result, artifact listing, and downloaded
-artifact against `docs/ci/CI_STATE.md` before any change.
+Step 11 may start only after the reviewed Step 10 changes are committed and
+pushed, both Pull Request jobs succeed on the exact pushed commit, and every
+published required result artifact is downloaded and inspected. Verify the
+actual branch, HEAD, remote, clean working tree, Pull Request, job details,
+artifact listings, digests, and downloaded contents against
+`docs/ci/CI_STATE.md` before any change.
 
-The Step 9 migration and database test must be present in the verified remote
-commit. Do not substitute the authorized development project for local CI and
-do not deploy the migration remotely as part of activation.
+The local integration job must remain independent of physical hardware, remote
+Supabase projects, credentials, and production services. Do not treat a local
+fixture, generated local key, or artifact retention setting as a Product
+requirement.
 
 ## Step
 
-Step 10 — Add the local integration CI job
+Step 11 — Measure, document, and prepare branch protection
 
 ## Read first
 
@@ -23,86 +25,57 @@ Step 10 — Add the local integration CI job
 3. `docs/ci/CI_PLAN.md`
 4. `docs/ci/NEXT_SESSION.md`
 5. `docs/ci/DECISIONS.md`
-6. `docs/ci/SUPABASE_SCHEMA_BOOTSTRAP.md`
-7. `docs/ci/FLOW_EXPLANATIONS.md`
+6. `docs/ci/FLOW_EXPLANATIONS.md`
 
-Additional files relevant to this step:
-
-- `.github/workflows/ci.yml`
-- `package.json`
-- `package-lock.json`
-- `supabase/config.toml`
-- `supabase/migrations/20260930233000_create_ingest_messages.sql`
-- `supabase/tests/ingest_messages.test.sql`
-- `src/tlm_device_data_platform/local_integration.py`
-- `tests/test_local_integration.py`
-
-Do not read or change unrelated future files unless this step requires them.
+Read only additional source, test, workflow, and documentation files relevant
+to Step 11.
 
 ## Goal
 
-Add one reproducible GitHub-hosted Pull Request job that starts only disposable
-local Supabase/PostgreSQL infrastructure, rebuilds the approved migration from
-Git, runs the database tests, exercises the existing provider-independent local
-integration boundary where justified, and always cleans up. It must require no
-physical hardware, production service, remote Supabase project, or secret.
+Measure the existing test coverage before proposing any threshold, document in
+Russian how to reproduce and extend the Python, simulator, local API/storage,
+and local Supabase checks and how to diagnose CI failures, and confirm the
+stable Pull Request check names needed for a later branch-protection proposal.
 
 ## Required approach
 
-- Use the exact project-scoped Supabase CLI version and npm lock already in the
-  repository.
-- Verify current GitHub-hosted runner and Supabase CLI requirements before
-  choosing runner setup or commands.
-- Keep the existing `CI / Python 3.11` check stable unless a reviewed workflow
-  reason requires a change.
-- Add a separate, clearly named local integration/database job with an explicit
-  timeout.
-- Start Supabase locally without `supabase link`, remote credentials, or remote
-  identifiers.
-- Rebuild from `supabase/migrations/` and run `supabase test db`.
-- Connect the existing local API/storage integration flow to the approved
-  ingress table only if the smallest adapter and test can preserve opaque bytes
-  without inventing API, acknowledgement, transaction, or Product semantics.
-- Make cleanup execute reliably after success or failure and preserve useful
-  failure logs/artifacts without exposing credentials.
-- Reproduce the workflow locally as far as the environment allows.
+- Measure coverage from the repository's actual full Python suite before
+  proposing a coverage policy; do not invent an arbitrary threshold.
+- Document exact local reproduction for both required jobs and their artifacts.
+- Explain simulator fixtures, local HTTP/storage integration, migrations,
+  pgTAP extension, failure handling, and the open Product decisions.
+- Confirm the final check names from successful Pull Request runs.
+- Keep documentation and measurement changes separate from product behavior.
 
 ## Out of scope and safety limits
 
-- No `supabase link`, `db pull`, `db push`, `migration repair`, linked reset,
-  remote SQL, or any other remote Supabase access or mutation.
-- Do not add production secrets, project references, database passwords, or
-  connection strings to GitHub Actions, Git, logs, or artifacts.
-- Do not invent richer tables, fields, constraints, policies, seed data,
-  telemetry parsing, identity, retention, ordering, idempotency, or authorization
-  semantics.
-- Do not make required CI depend on the authorized development project.
-- Do not begin Step 11, deploy, merge the Pull Request, configure branch
-  protection, or add unrelated caching, lint, typing, coverage, scale, or SLO
-  policy.
+- Do not enable or modify branch protection without explicit user approval.
+- Do not merge or close the Pull Request.
+- Do not deploy or link to any remote Supabase project.
+- Do not add physical-hardware, production-service, secret, or credential
+  dependencies.
+- Do not invent telemetry, authorization, retention, scale, SLO, or coverage
+  requirements.
+- Do not begin any work beyond Step 11.
 
 ## Validation
 
 At minimum:
 
-- workflow syntax and full-SHA action pin validation;
-- clean locked npm installation and exact Supabase CLI version;
-- clean local Supabase startup and migration rebuild;
-- `supabase test db` with all 18 current assertions passing;
-- any added adapter/integration test over real local boundaries;
-- reliable always-run cleanup on the tested path;
-- locked Python reinstall, `pip check`, and full pytest suite;
-- installed-package import where relevant;
-- preservation of the existing Python pytest artifact contract;
-- scan for secrets, remote identifiers, production dependencies, and untracked
-  generated state;
-- `git diff --check` and untracked-file whitespace validation.
+- reproducible coverage measurement with its exact command and result;
+- documentation command and path accuracy;
+- workflow and stable check-name verification against the successful remote
+  Step 10 run;
+- locked Python and npm dependency checks where affected;
+- full pytest and local Supabase/database checks where affected;
+- secret, remote-identifier, generated-state, and whitespace scans.
 
 After approved commit and push, verify every updated Pull Request job and
 download and inspect every required result artifact.
 
 ## Stop condition
 
-Stop after Step 10 implementation, validation, persistent handoff update,
+Stop after Step 11 implementation, validation, persistent handoff update,
 approved commit/push, successful Pull Request workflow verification, and
-artifact inspection. Do not start Step 11 in the same session.
+artifact inspection. Do not enable branch protection or merge the Pull Request
+without separate explicit approval.

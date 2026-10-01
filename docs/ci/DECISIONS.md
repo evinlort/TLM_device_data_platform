@@ -475,3 +475,47 @@ Source:
 
 The user's explicit approval of `PROPOSAL v1` during Step 9 and the existing
 `CI-DEC-002`, `CI-DEC-011`, and `CI-DEC-012` boundaries.
+
+## CI-DEC-014 — Separate disposable local integration job
+
+Status: ACCEPTED
+
+Decision:
+
+Run the Supabase lifecycle in a separate Pull Request job named
+`Local Supabase integration` on `ubuntu-24.04`, with exact Node.js and
+project-scoped Supabase CLI versions, a 30-minute timeout, and always-run local
+cleanup. Rebuild and test the migration, then execute the full existing Python
+suite while the local stack is running. Publish only pgTAP and pytest result
+files as a separate artifact. Do not add a provider-specific Python database
+adapter until its connection and credential boundary is confirmed.
+
+Reason:
+
+The existing `Python 3.11` job is already a stable required check and artifact
+contract. Database startup is slower and depends on a Docker-compatible runner,
+so isolating it keeps Python failures distinct and preserves the established
+check. The approved schema and the provider-independent API/storage flow can be
+validated together on one clean runner without choosing an unconfirmed
+PostgREST or PostgreSQL client contract.
+
+Consequences:
+
+- `CI / Python 3.11` remains unchanged.
+- `CI / Local Supabase integration` becomes the separate database/integration
+  check after remote validation.
+- The new job requires no GitHub secret, remote Supabase project, project link,
+  physical hardware, or production service.
+- Supabase startup output is suppressed so generated local URLs and credentials
+  are not retained in logs or artifacts.
+- The `local-integration-results` artifact contains only the pgTAP log and
+  pytest XML/log; it is not a production-data artifact or retention decision.
+- A provider-specific application adapter remains deferred until Product and
+  architecture confirm its connection, credential, transaction, and response
+  contract.
+
+Source:
+
+Step 10 workflow implementation, `CI-DEC-002`, `CI-DEC-011`, `CI-DEC-012`,
+`CI-DEC-013`, and official Supabase/GitHub runner guidance verified on
+2026-10-01.

@@ -3,41 +3,43 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Starting HEAD for Step 9:
-  `632643d755c3758d334281994feae305ec9c6855`.
+- Starting HEAD for Step 10 and current committed HEAD:
+  `581d389c9b5072f80cb5eb2409b32a3716e09627`.
 - Step 9 implementation commit:
   `2e46cd6baf5dc013a64b3c0fdde54e34acb11f01`.
-- The commit containing this file finalizes the Step 9 handoff; use
-  `git rev-parse HEAD` for its exact SHA without creating a self-referential
-  state update.
 - Remote: `origin` is
   `https://github.com/evinlort/TLM_device_data_platform.git`.
 - GitHub repository: public `evinlort/TLM_device_data_platform` with `main` as
   the default branch. Public visibility is intentional.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open, mergeable, and points from `ci/github-actions-foundation` to `main`.
-- Working tree: contains only the reviewed, uncommitted final Step 9 handoff
-  update after remote validation.
+- Starting branch, remote-tracking branch, and Pull Request head all matched the
+  current committed HEAD before Step 10 changes.
+- Working tree: contains only the reviewed, uncommitted Step 10 workflow and
+  persistent handoff changes listed below.
 
 ## Current milestone
 
-- Step: Step 9 — Add reproducible local database and database tests.
-- Status: DONE.
-- Completion blockers: none.
+- Step: Step 10 — Add the local integration CI job.
+- Status: READY_FOR_COMMIT.
+- Completion blocker: explicit user approval to commit and push, followed by
+  remote validation of both Pull Request jobs and both result artifacts.
 
 ## Verified starting state
 
 - Local branch, starting HEAD, remote-tracking branch, and Pull Request head all
-  equal `632643d755c3758d334281994feae305ec9c6855`.
-- Required workflow `CI` run #18, ID `36761100821`, completed successfully for
-  that final Step 8 handoff commit. Every `Python 3.11` job step completed with
+  equal `581d389c9b5072f80cb5eb2409b32a3716e09627`; the working tree was clean.
+- Pull Request #1 was open, non-draft, mergeable, and targeted `main`.
+- Required workflow `CI` run #20, ID `36777531943`, completed successfully for
+  that final Step 9 handoff commit. Every `Python 3.11` job step completed with
   conclusion `success`.
-- Its artifact `pytest-results-python-3.11`, ID `11118621855`, is not expired;
+- Its artifact `pytest-results-python-3.11`, ID `11126805181`, is not expired;
   GitHub reports digest
-  `sha256:13f8f2e62dc02e6b3065dd5e804b67a53821385ce6a7f4cfab6bd1974e19db00`.
+  `sha256:79a3bde2c877a4da19d3fa6ef2e2f8dbffebd517636807b370184f2c3139148b`.
 - The artifact was downloaded and inspected. It contains exactly non-empty
-  `pytest.xml` and `pytest.log`; the log reports `22 passed`, and parsed JUnit
-  totals are `22` tests, `0` failures, `0` errors, and `0` skipped.
+  `pytest.xml` (`3481` bytes) and `pytest.log` (`961` bytes); the log reports
+  `22 passed`, and parsed JUnit totals are `22` tests, `0` failures, `0` errors,
+  and `0` skipped.
 
 ## Authorized source and remote discovery
 
@@ -101,80 +103,103 @@ does not define Product ordering, and `body` remains opaque.
 - No seed, remote link, remote deployment, API adapter implementation, Python
   product behavior, or GitHub Actions database job was added.
 
-## Validation
+## Implemented in Step 10
 
-- Local Node: `v22.23.2`; npm: `10.9.8`.
-- Clean `npm ci`: PASS (`9` packages installed, `0` vulnerabilities reported).
-- `npx supabase --version`: PASS (`2.118.0`).
-- `npm ls --depth=0`: PASS; the only direct package is
+- Kept the existing `CI / Python 3.11` job and its artifact contract unchanged.
+- Added a separate `CI / Local Supabase integration` job in
+  `.github/workflows/ci.yml`.
+- Pinned the job to `ubuntu-24.04`, Node.js `22.23.2`, Python `3.11`, a
+  30-minute timeout, and `actions/setup-node` v7.0.0 at verified full commit SHA
+  `820762786026740c76f36085b0efc47a31fe5020`.
+- The job performs locked npm and Python installs, verifies Supabase CLI
+  `2.118.0`, starts only local Supabase, rebuilds the database from migrations,
+  runs the existing 18-assertion pgTAP suite, and runs the complete 22-test
+  Python suite including the real loopback HTTP/storage integration scenarios.
+- `supabase start` stdout is suppressed so local URLs and generated local keys
+  are not retained in logs or artifacts.
+- `supabase stop --no-backup` uses `always()` and runs before result validation
+  and artifact upload.
+- A separate `local-integration-results` artifact contains only
+  `database-tests.log`, `pytest.xml`, and `pytest.log` under the already ignored
+  `test-results/local-integration/` path.
+- Added `CI-DEC-014` for the separate disposable job and the intentional
+  deferral of any provider-specific Python database adapter.
+- No schema, migration, database test, Python source/test/dependency, npm
+  dependency, remote Supabase state, or Product behavior changed.
+
+## Step 10 local validation
+
+- Official Supabase guidance was rechecked on `2026-10-01`: project-scoped CLI,
+  exact version, Node.js 20 or later, a Docker-compatible runtime, committed
+  migrations, and clean local `db reset` remain the documented model.
+- Official GitHub runner-image data identifies `ubuntu-24.04` as the current
+  `ubuntu-latest` image and includes Docker; the explicit label avoids a gradual
+  `-latest` migration during this CI step.
+- `actions/setup-node` release v7.0.0 and verified full commit SHA
+  `820762786026740c76f36085b0efc47a31fe5020`: PASS.
+- Workflow YAML parse, expected job structure, and all action full-SHA pins:
+  PASS.
+- Clean `npm ci`: PASS (`9` packages installed); `npm ls --depth=0`: only
   `supabase@2.118.0`.
-- `supabase/config.toml` parse and required-value assertions: PASS.
-- Locked Python reinstall: PASS.
-- `.venv/bin/python -m pip check`: PASS
-  (`No broken requirements found`).
-- Workflow-equivalent full pytest with real loopback HTTP: PASS (`22 passed`),
-  with non-empty JUnit XML and readable log.
-- JUnit parse: PASS (`22` tests, `0` failures, `0` errors, `0` skipped).
-- Installed-package import from `/tmp`: PASS; `local_integration.py` resolves
-  from `.venv/lib/python3.11/site-packages`.
-- Native disposable PostgreSQL `17.9` fallback independently applied the
-  migration and confirmed both column definitions, identity mode, RLS, zero
-  policies, role privileges, exact bytes, empty bytes, and duplicates.
-- A disposable rootless Docker daemon then allowed the locked Supabase CLI to
-  start its local stack without system Docker access.
-- Official Supabase cycle 1: `db reset --local` PASS; migration applied;
-  `supabase test db` PASS (`1` file, `18` tests).
-- Live local catalog: PostgreSQL `17.6`, RLS enabled, `0` policies,
-  `anon` SELECT denied, `authenticated` INSERT denied, `service_role` INSERT
-  granted and SELECT denied.
-- Official Supabase cycle 2: clean reset and database test PASS again
-  (`18/18`).
-- `supabase stop --no-backup`: PASS; no local Supabase containers remained.
-- The temporary rootless Docker daemon and its multi-gigabyte `/tmp` data were
-  removed without modifying host Docker configuration.
-- Secret/identifier scan: PASS; no remote project reference, URL, connection
-  string, credential, token, or password appears in the Step 9 source changes.
-- Final `git diff --check` and untracked-file whitespace validation after the
-  persistent handoff update: PASS.
+- Supabase CLI exact version assertion: PASS (`2.118.0`).
+- Locked Python reinstall and `.venv/bin/python -m pip check`: PASS.
+- Official disposable local Supabase startup and clean `db reset --local`:
+  PASS; the committed migration applied.
+- `supabase test db`: PASS (`1` file, `18` tests, `Result: PASS`).
+- Full pytest while local Supabase was running: PASS (`22 passed`); JUnit totals
+  are `22` tests, `0` failures, `0` errors, and `0` skipped.
+- Installed-package import from `/tmp`: PASS; the package resolves from
+  `.venv/lib/python3.11/site-packages`.
+- Result-file contract: PASS; the three local integration files exist, are
+  non-empty, and contain the expected pgTAP and pytest totals.
+- Failure-path cleanup simulation: PASS; after an intentional non-zero command,
+  `supabase stop --no-backup` left zero Supabase containers.
+- The disposable rootless Docker daemon, containers, runtime directory, and
+  multi-gigabyte `/tmp` data were removed; host Docker configuration was not
+  changed.
+- Step 10 implementation scan found no remote project identifier, hosted URL,
+  connection string, password, token, secret, or credential.
+- Final documentation/status consistency, action-pin structure,
+  generated-state, secret, whitespace, and diff checks: PASS.
 
-## Remote Step 9 validation
+## Remote activation validation
 
-- Commit: `2e46cd6baf5dc013a64b3c0fdde54e34acb11f01`.
-- Local HEAD, remote-tracking branch, and Pull Request head matched that commit
-  after push.
-- Pull Request #1 remained open, non-draft, and mergeable.
-- Workflow: `CI`, run ID `36777217649`, run number `19`, conclusion `success`.
-- Job: `Python 3.11`, ID `110098037814`; checkout, Python setup, locked install,
+- Commit: `581d389c9b5072f80cb5eb2409b32a3716e09627`.
+- Local HEAD, remote-tracking branch, and Pull Request head matched that commit.
+- Pull Request #1 was open, non-draft, and mergeable.
+- Workflow: `CI`, run ID `36777531943`, run number `20`, conclusion `success`.
+- Job: `Python 3.11`, ID `110099109099`; checkout, Python setup, locked install,
   `pip check`, pytest, result validation, artifact upload, and all post steps
   completed with conclusion `success`.
-- Artifact: `pytest-results-python-3.11`, ID `11125259470`, `1489` archive
+- Artifact: `pytest-results-python-3.11`, ID `11126805181`, `1489` archive
   bytes, not expired when inspected. GitHub reports digest
-  `sha256:6d67301a53cd2005040400c5268eb28049d442ee3a6d9d8d9bef9c0b7e36793b`.
+  `sha256:79a3bde2c877a4da19d3fa6ef2e2f8dbffebd517636807b370184f2c3139148b`.
 - The downloaded artifact contains exactly two non-empty files:
   `pytest.xml` (`3481` bytes) and `pytest.log` (`961` bytes).
 - Downloaded JUnit XML: `22` tests, `0` failures, `0` errors, `0` skipped.
-- Downloaded pytest log: PASS; final summary is `22 passed in 0.22s`.
-- This unchanged workflow does not yet exercise Supabase. The database job is
-  intentionally deferred to Step 10; Step 9's two official local Supabase
-  cycles remain the database-specific validation evidence.
+- Downloaded pytest log: PASS; final summary is `22 passed in 0.61s`.
+- This run proves the exact Step 10 starting commit and existing Python artifact
+  contract. Remote validation of the new local integration job is pending commit
+  approval and push.
 
 ## Required CI
 
 - Pull Request workflow: `.github/workflows/ci.yml`.
 - Required Python job: `CI / Python 3.11`.
+- Proposed new required database/integration job after remote validation:
+  `CI / Local Supabase integration`.
 - Local Python reproduction:
   - `.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'`
   - `.venv/bin/python -m pip check`
   - `.venv/bin/python -m pytest`
 - Local database reproduction after `npm ci`:
-  - `npx supabase start`
-  - `npx supabase db reset --local`
-  - `npx supabase test db`
-  - `npx supabase stop --no-backup`
-- The current required workflow is intentionally unchanged and still uses no
-  physical hardware, Docker, secret, credential, production service, Supabase
-  project, or PostgreSQL instance. Step 10 will add the disposable local
-  database/integration job.
+  - `npx --no-install supabase start`
+  - `npx --no-install supabase db reset --local`
+  - `npx --no-install supabase test db`
+  - `npx --no-install supabase stop --no-backup`
+- Both jobs require no physical hardware, GitHub secret, remote Supabase project,
+  hosted PostgreSQL instance, or production service. The local integration job
+  uses only Docker-backed disposable services on its clean GitHub runner.
 
 ## Product decisions still OPEN
 
@@ -192,31 +217,26 @@ does not define Product ordering, and `body` remains opaque.
   policies.
 - Command authority, SLO, production scale, and cost.
 
-## Files changed in Step 9
+## Files changed in Step 10
 
-- `.gitignore`
-- `supabase/.gitignore`
-- `supabase/config.toml`
-- `supabase/migrations/20260930233000_create_ingest_messages.sql`
-- `supabase/tests/ingest_messages.test.sql`
-- `docs/ci/SUPABASE_SCHEMA_BOOTSTRAP.md`
+- `.github/workflows/ci.yml`
 - `docs/ci/CI_PLAN.md`
 - `docs/ci/CI_STATE.md`
 - `docs/ci/NEXT_SESSION.md`
 - `docs/ci/DECISIONS.md`
 - `docs/ci/FLOW_EXPLANATIONS.md`
 
-No Python source, Python test, Python dependency, npm dependency, or GitHub
-Actions workflow file changed.
+No Python source, Python test, Python dependency, npm dependency, Supabase
+configuration, migration, or database test changed.
 
 ## Next step
 
-- Step: Step 10 — Add the local integration CI job.
-- Activation requires the reviewed Step 9 changes to be committed and pushed,
-  the updated Pull Request workflow to succeed, and its published test-results
-  artifact to be downloaded and inspected.
-- Step 10 must run only disposable local infrastructure on a clean runner and
-  must not link to or depend on any remote Supabase project.
+- Step: Step 11 — Measure, document, and prepare branch protection.
+- Activation requires the reviewed Step 10 changes to be committed and pushed,
+  both Pull Request jobs to succeed on the exact commit, and both published
+  result artifacts to be downloaded and inspected.
+- Do not enable branch protection or merge the Pull Request without separate
+  explicit user approval.
 
-Use `docs/ci/BOOTSTRAP_PROMPT.md` for the next session. Do not start Step 10 in
+Use `docs/ci/BOOTSTRAP_PROMPT.md` for the next session. Do not start Step 11 in
 this session.

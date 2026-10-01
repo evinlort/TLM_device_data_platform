@@ -3177,3 +3177,301 @@ required Python CI и artifact contract на clean GitHub-hosted runner. Workflo
 Текущий documentation-only handoff готов к отдельному approved commit/push.
 Он не начинает Step 10, не меняет workflow, schema или remote Supabase state и
 только сохраняет проверенные commit/run/artifact facts для следующей сессии.
+
+## Step 10 — Отдельный CI job для локальной интеграции
+
+### Короткий итог
+
+Step 10 добавил в Pull Request workflow второй job —
+`Local Supabase integration`. Он на чистом GitHub-hosted runner должен поднять
+только disposable local Supabase, заново собрать database из committed
+migrations, выполнить все `18` pgTAP assertions, запустить полный Python suite
+из `22` tests и в любом исходе удалить local stack.
+
+Существующий job `Python 3.11` не изменён. Новый job не использует GitHub
+secrets, remote project, production service или physical device и публикует
+отдельный artifact только с database-test и pytest results.
+
+### Почему этот шаг был нужен
+
+После Step 9 schema уже была воспроизводимой локально, но required Pull Request
+workflow всё ещё проверял только Python. Database-specific доказательство
+существовало в виде двух локальных Supabase cycles, а не автоматической проверки
+каждого PR.
+
+Это оставляло реальный разрыв: migration или pgTAP test можно было изменить в
+Pull Request, не запустив их на clean runner. Кроме того, Step 7 уже имел
+настоящий local HTTP/storage integration flow, но его совместное прохождение с
+локальной infrastructure не было отдельным видимым check.
+
+Step 10 закрывает этот разрыв, не меняя Product model. CI теперь описывает
+конкретный disposable lifecycle, который воспроизводит database source of truth
+из Git и одновременно выполняет существующий provider-independent flow.
+
+### Проверка исходного состояния
+
+Сессия началась с commit
+`581d389c9b5072f80cb5eb2409b32a3716e09627` в ветке
+`ci/github-actions-foundation`. Local branch, `origin` tracking branch и Pull
+Request head совпадали, working tree был clean.
+
+Pull Request #1 был open, non-draft и mergeable. Последний исходный workflow
+`CI`, run `36777531943` (`#20`), завершился успешно на том же commit. Его job
+`Python 3.11` и все steps имели conclusion `success`.
+
+Artifact `pytest-results-python-3.11`, ID `11126805181`, был заново скачан и
+проверен. Он содержал ровно два непустых файла: `pytest.xml` размером `3481`
+bytes и `pytest.log` размером `961` bytes. JUnit сообщил `22` tests, ноль
+failures, errors и skipped; log завершался результатом `22 passed in 0.61s`.
+Так было доказано, что Step 10 активирован от полностью проверенного Step 9, а
+не только от локального состояния.
+
+### Проверенная актуальная toolchain model
+
+Перед изменением workflow были повторно проверены официальные источники
+Supabase и GitHub.
+
+Supabase по-прежнему требует Docker-compatible runtime для local development,
+Node.js 20 или новее для npm/npx installation, рекомендует project-scoped CLI с
+закреплённой версией и использует committed migrations плюс clean `db reset`
+как путь воспроизводимости. `package.json` и `package-lock.json` уже выполняли
+эти требования через exact `supabase@2.118.0`.
+
+GitHub runner-images указывает, что `ubuntu-24.04` является текущей
+`ubuntu-latest` image и содержит Docker. Job использует явный
+`ubuntu-24.04`, чтобы его OS base не менялся во время постепенного переноса
+alias `ubuntu-latest`.
+
+Для точной установки Node.js добавлен официальный `actions/setup-node` release
+v7.0.0. Его tag разрешается в commit
+`820762786026740c76f36085b0efc47a31fe5020`; GitHub API подтвердил valid
+signature verification. Workflow использует полный SHA, как и остальные
+actions.
+
+### Что изменилось в workflow
+
+В `.github/workflows/ci.yml` добавлен отдельный job с устойчивым display name:
+
+```text
+CI / Local Supabase integration
+```
+
+Job использует:
+
+- `ubuntu-24.04`;
+- explicit timeout `30` minutes;
+- Node.js `22.23.2` через full-SHA `actions/setup-node`;
+- Python `3.11` через уже проверенный full-SHA `actions/setup-python`;
+- exact project dependency `supabase@2.118.0` через clean `npm ci`;
+- существующий locked Python install contract.
+
+`package-manager-cache: false` оставляет cache вне этого шага: caching не нужен
+для correctness и не должен добавлять ещё одну изменяемую границу. После
+`npm ci` отдельная команда сравнивает фактический вывод CLI ровно с `2.118.0`,
+поэтому случайная подмена tool version станет явной ошибкой.
+
+Все CLI calls используют `npx --no-install`: если locked binary отсутствует,
+job падает вместо загрузки другой версии. Always-run cleanup сначала проверяет
+наличие `node_modules/.bin/supabase`, поэтому failure самого `npm ci` не запускает
+неуправляемую fallback installation.
+
+Существующий job `Python 3.11` сохранён без изменения имени, runner,
+timeout, commands и artifact. Это удерживает его прежний check и failure signal
+стабильными. Более тяжёлый database lifecycle не скрывает обычную Python
+regression и может диагностироваться отдельно.
+
+### Полный поток нового job
+
+Job выполняет следующий процесс:
+
+```text
+checkout without persisted credentials
+  -> setup exact Node.js
+  -> npm ci from package-lock.json
+  -> assert Supabase CLI == 2.118.0
+  -> setup Python 3.11
+  -> install package and pinned test environment
+  -> pip check
+  -> start disposable local Supabase
+  -> reset local database from committed migrations
+  -> run all transactional pgTAP tests
+  -> run the complete Python suite
+  -> always stop Supabase without backup
+  -> always validate expected result files
+  -> always attempt result-artifact upload
+```
+
+`supabase start` stdout перенаправлен в `/dev/null`. CLI при успешном startup
+обычно печатает local URLs и generated local keys; они не являются production
+secrets, но сохранять credentials и connection data в CI logs или artifacts
+нет необходимости. Ошибки остаются видимыми через stderr.
+
+`db reset --local` явно выбирает local database и заново применяет migration
+из `supabase/migrations/`. Никакой `link`, access token, project reference,
+database password или remote command job не получает.
+
+Database-test output пишется одновременно в console и
+`test-results/local-integration/database-tests.log` с сохранением реального
+exit status через `PIPESTATUS`. Полный pytest аналогично создаёт JUnit XML и
+human-readable log. Каталог уже покрыт существующим `test-results/` ignore и
+не создаёт нового generated-state правила.
+
+Cleanup расположен до result validation и имеет `if: always()`. Поэтому он
+выполняется после success или failure предыдущего step. Validation и artifact
+upload также имеют `always()`: отсутствующий или пустой ожидаемый result file
+становится отдельной понятной ошибкой, а существующие результаты остаются
+доступны для диагностики.
+
+Artifact `local-integration-results` содержит только:
+
+- `database-tests.log`;
+- `pytest.xml`;
+- `pytest.log`.
+
+Startup output, `.temp` state, database volume, local keys, URLs и connection
+strings в artifact не входят. Его retention не определяет Product retention.
+
+### Почему не добавлен новый database adapter
+
+Step 10 разрешал соединить `StorageAdapter` с `public.ingest_messages`, только
+если минимальный adapter мог сохранить opaque bytes без новых Product решений.
+Технически это потребовало бы выбрать как минимум один пока не подтверждённый
+контракт:
+
+- PostgREST endpoint и способ передачи `service_role` key; либо
+- PostgreSQL driver, connection lifecycle и transaction behavior.
+
+Оба пути закрепили бы credential и backend connection implementation, которые
+остаются открытыми. Read-back проверка также конфликтовала бы с намеренно узким
+Step 9 grant: `service_role` имеет `INSERT`, но не `SELECT`.
+
+Поэтому Step 10 не выдаёт дополнительных privileges и не создаёт
+provider-specific Python code. Вместо этого один clean job проверяет две уже
+утверждённые границы:
+
+1. migration и pgTAP доказывают database shape, grants и exact opaque-byte
+   behavior;
+2. полный Python suite запускает queue, simulator orchestration, настоящий
+   loopback HTTP server и `StorageAdapter` filesystem implementation.
+
+Это покрывает acceptance criteria шага, не превращая CI wiring в случайный
+production architecture decision. Решение сохранено как `CI-DEC-014`.
+
+### Что происходило во время реализации и как решались проблемы
+
+#### Sandbox запрещал системный Docker и запись CLI telemetry
+
+Local environment не имел доступа к `/var/run/docker.sock`, а CLI пытался
+обновить telemetry state в read-only home. Это ограничение текущего sandbox, а
+не GitHub runner или repository workflow.
+
+Как на Step 9, был поднят отдельный rootless Docker daemon. Все runtime, image и
+volume data находились в уникальном `/tmp/tlm-step10-docker.*`; host Docker
+configuration не менялась. CLI запускался с exact local binary после `npm ci`.
+
+При последнем повторе pytest в обычном restricted sandbox два loopback tests
+получили `PermissionError` на создание TCP socket. Suite был немедленно
+повторён в разрешённом local-loopback context и дал `22 passed`; ранее тот же
+suite уже прошёл внутри полного Supabase cycle. Это подтвердило, что failure
+вызван sandbox permission, а не test или workflow regression.
+
+#### Первый local daemon был запущен с несовместимым network option
+
+Первая попытка использовала `--bridge=none`. Images скачались, но database
+container не смог стартовать с ошибкой `unable to derive the IP value for
+host-gateway`. Эта попытка не была засчитана как database validation.
+
+Дополнительно orchestration shell той попытки не включал fail-fast, поэтому
+после неуспешного reset он дошёл до Python tests. Хотя Python tests прошли, этот
+результат также не считался успешным combined cycle.
+
+Daemon был полностью остановлен и перезапущен со стандартным rootless bridge
+networking. Повторный workflow-equivalent command использовал
+`set -euo pipefail`, поэтому любое отклонение немедленно завершало бы validation.
+После исправления Supabase startup, reset, pgTAP и pytest прошли последовательно.
+
+#### Registry однажды вернул timeout при первом image pull
+
+При clean download PostgreSQL image registry один раз вернул timeout ожидания
+headers. Docker автоматически повторил pull, digest был получен, и image
+скачался успешно. Изменять versions или обходить registry не потребовалось.
+
+#### Cleanup был проверен не только на успешном пути
+
+После зелёного полного цикла local stack был поднят ещё раз, затем shell
+получил намеренный non-zero result, после чего был выполнен тот же
+`supabase stop --no-backup`. Проверка обнаружила ноль оставшихся Supabase
+containers. Это подтверждает фактическую cleanup command, а workflow-level
+`always()` гарантирует её запуск после failed prior step.
+
+После остановки daemon обычный host-side `rm` не мог удалить часть UID-mapped
+image layers. Остаток был удалён внутри краткого rootless user namespace с тем
+же mapping. Затем были подтверждены отсутствие daemon processes, runtime
+directory и cleanup state.
+
+### Проверка и что она доказывает
+
+Статическая и supply-chain проверка:
+
+- YAML parse: PASS;
+- новый job и expected structure: PASS;
+- все семь action uses закреплены полными 40-character SHA: PASS;
+- `actions/setup-node` v7.0.0 SHA и signature: PASS;
+- `git diff --check`: PASS до persistent handoff update.
+
+Dependency и Python regression:
+
+- clean `npm ci`: PASS, установлено `9` packages;
+- `npm ls --depth=0`: только `supabase@2.118.0`;
+- Supabase CLI: exact `2.118.0`;
+- locked Python reinstall: PASS;
+- `pip check`: `No broken requirements found`;
+- full pytest: `22 passed`;
+- JUnit: `22` tests, `0` failures, `0` errors, `0` skipped;
+- import из `/tmp` разрешился в `.venv/lib/python3.11/site-packages`.
+
+Official local infrastructure validation:
+
+- disposable local Supabase startup: PASS;
+- `db reset --local`: PASS, migration применена из Git;
+- `supabase test db`: `1` file, `18` tests, `Result: PASS`;
+- full Python suite при работающем local stack: PASS;
+- три ожидаемых local integration result files существуют и непусты;
+- success-path cleanup: PASS;
+- simulated failure-path cleanup: PASS;
+- после cleanup нет containers, daemon processes или временного storage.
+
+Эти проверки доказывают, что команды нового job согласованы с существующим
+locked project и проходят в clean disposable environment. Они ещё не заменяют
+обязательную remote проверку на настоящем GitHub-hosted runner: она возможна
+только после approved commit и push.
+
+### Что сознательно осталось вне Step 10
+
+Step 10 не добавляет и не определяет:
+
+- remote Supabase link, pull, push, SQL или deployment;
+- GitHub secret, project reference или production credential;
+- физическое устройство или Hardware-in-the-Loop;
+- новый table, column, grant, RLS policy, seed или migration;
+- PostgREST/PostgreSQL Python adapter;
+- production API route, acknowledgement или transaction semantics;
+- telemetry parsing или перенос test fixture fields в database;
+- identity, ordering, duplicate, retention или read-access policy;
+- cache, coverage threshold, lint, typing, SLO или performance target;
+- branch protection или Pull Request merge;
+- Step 11 documentation и coverage work.
+
+### Состояние перед commit approval
+
+Workflow, local validation, cleanup, `CI-DEC-014` и persistent handoff
+подготовлены. `CI_PLAN.md` и `CI_STATE.md` имеют статус `READY_FOR_COMMIT`.
+`NEXT_SESSION.md` описывает только Step 11 и запрещает его активацию до approved
+Step 10 commit/push, успешного прохождения обоих PR jobs и проверки обоих
+artifacts.
+
+Step 10 ещё не считается `DONE`: сначала требуется явное разрешение пользователя
+на commit и push. После push необходимо проверить exact Pull Request head, оба
+jobs и каждый их step, скачать `pytest-results-python-3.11` и
+`local-integration-results`, сверить digests и содержимое и только затем
+финализировать remote handoff. Step 11 в этой сессии не начинается.

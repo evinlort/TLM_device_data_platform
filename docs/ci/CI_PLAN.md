@@ -213,7 +213,7 @@ Implementation summary:
 
 ### Step 10 — Add the local integration CI job
 
-Status: NOT_STARTED
+Status: READY_FOR_COMMIT
 
 Acceptance criteria:
 
@@ -223,6 +223,20 @@ Acceptance criteria:
 - Add timeout and reliable cleanup without production secrets.
 
 Dependencies: Steps 2, 7, and 9.
+
+Implementation summary:
+
+- Added a separate `Local Supabase integration` Pull Request job on a pinned
+  Ubuntu runner with explicit Node.js, Python, and job timeout configuration.
+- The job installs the exact project-scoped Supabase CLI, starts only the local
+  disposable stack, rebuilds the database from migrations, runs all 18 pgTAP
+  assertions, and runs the full 22-test Python suite over the existing real
+  loopback HTTP/storage boundary.
+- Cleanup runs with `always()`, and a separate artifact preserves only the
+  database-test and pytest result files; startup output containing local URLs
+  or credentials is not published.
+- No remote project, secret, physical hardware, schema change, provider-specific
+  Python adapter, or new Product behavior was added.
 
 ### Step 11 — Measure, document, and prepare branch protection
 
