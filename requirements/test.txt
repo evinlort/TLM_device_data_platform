@@ -1,4 +1,5 @@
 # Locked test environment for the Python 3.11 baseline.
+coverage==7.16.1
 iniconfig==2.3.0
 packaging==26.3
 pluggy==1.6.0

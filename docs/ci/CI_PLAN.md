@@ -240,7 +240,7 @@ Implementation summary:
 
 ### Step 11 — Measure, document, and prepare branch protection
 
-Status: NOT_STARTED
+Status: READY_FOR_COMMIT
 
 Acceptance criteria:
 
@@ -253,13 +253,49 @@ Acceptance criteria:
 
 Dependencies: stable completion of earlier CI steps.
 
+Implementation summary:
+
+- Added exact `coverage.py` `7.16.1` to the locked Python test environment and
+  configured statement plus branch measurement for the installed package.
+- Measured the complete 22-test suite at `88%` combined coverage: `253`
+  statements with `22` missed and `56` branches with `15` partial.
+- Added a Russian local testing and failure-diagnosis guide covering both
+  required jobs, artifacts, simulator fixtures, real loopback HTTP/storage,
+  migrations, pgTAP, extension rules, and open Product decisions.
+- Confirmed the stable check contexts `Python 3.11` and
+  `Local Supabase integration` across successful runs #21 and #22; both are
+  produced by GitHub Actions App `15368`.
+- Confirmed read-only that `main` has no branch protection and the repository
+  has no rulesets. No protection setting or Pull Request state changed.
+- No coverage threshold was proposed or enabled; the measured baseline is
+  evidence for a later policy decision, not a requirement.
+
+### Step 12 — Apply explicitly approved branch protection
+
+Status: NOT_STARTED
+
+Acceptance criteria:
+
+- Start only from a committed, pushed, and remotely verified final Step 11
+  handoff.
+- Obtain explicit user decisions for every branch-protection setting that will
+  be changed.
+- Require only the approved stable checks and bind them to the verified GitHub
+  Actions provider where supported.
+- Read back and verify the resulting protection without changing Product code,
+  CI semantics, coverage policy, or remote Supabase state.
+- Do not merge or close Pull Request #1 without separate explicit approval.
+
+Dependencies: Step 11 and explicit user approval of the exact protection
+configuration.
+
 ## Dependency order
 
 `Step 0 -> Step 1 -> Step 2`
 
 `Step 1 -> Step 3 -> Step 4 -> Step 4.5 -> Step 5 -> Step 6 -> Step 7`
 
-`Step 7 -> Step 8 -> Step 9 -> Step 10 -> Step 11`
+`Step 7 -> Step 8 -> Step 9 -> Step 10 -> Step 11 -> Step 12`
 
 The plan is a living document. Steps may be split when later repository facts
 show that a step is too large, but verified history must not be rewritten.

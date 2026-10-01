@@ -519,3 +519,42 @@ Source:
 Step 10 workflow implementation, `CI-DEC-002`, `CI-DEC-011`, `CI-DEC-012`,
 `CI-DEC-013`, and official Supabase/GitHub runner guidance verified on
 2026-10-01.
+
+## CI-DEC-015 — Reproducible branch coverage baseline without a threshold
+
+Status: ACCEPTED
+
+Decision:
+
+Pin `coverage.py` `7.16.1` in the Python test environment and measure statement
+and branch coverage for the installed `tlm_device_data_platform` package. Keep
+the measurement reproducible through `pyproject.toml` and
+`requirements/test.txt`, but do not configure `fail_under` or make a coverage
+percentage a required Pull Request check.
+
+Reason:
+
+Step 11 measured the complete 22-test suite before considering a policy. The
+verified baseline is `88%` combined statement/branch coverage: `253`
+statements with `22` missed and `56` branches with `15` partial. A single
+measurement is useful evidence, but it does not establish an agreed quality
+threshold or prove that every currently uncovered error path should block a
+Pull Request.
+
+Consequences:
+
+- Developers can reproduce the same measurement with the locked test
+  environment and the commands documented in
+  `docs/ci/TESTING_AND_BRANCH_PROTECTION.md`.
+- `.coverage` remains generated local state and is not committed.
+- Coverage can guide meaningful new scenarios, but tests must not be added only
+  to increase a number or exclude inconvenient code without justification.
+- Any future threshold, coverage artifact, or required coverage check needs a
+  separate reviewed decision based on measured history.
+- This decision changes no Product behavior, test fixture semantics, database
+  schema, required check name, or branch-protection setting.
+
+Source:
+
+Step 11 clean-environment coverage measurement and Coverage.py guidance
+verified on 2026-10-01.

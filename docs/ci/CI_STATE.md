@@ -3,9 +3,11 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Starting HEAD for Step 10:
-  `581d389c9b5072f80cb5eb2409b32a3716e09627`.
-- Current committed HEAD and Step 10 implementation commit:
+- Starting and current committed HEAD for Step 11:
+  `5c11432939c3efe17f8189d09e64042e03d60822`.
+- Final Step 10 handoff commit:
+  `5c11432939c3efe17f8189d09e64042e03d60822`.
+- Step 10 implementation commit:
   `08b10d5eb0c450251fe23e3618a6d93ac7ac4aaa`.
 - Step 9 implementation commit:
   `2e46cd6baf5dc013a64b3c0fdde54e34acb11f01`.
@@ -15,34 +17,44 @@
   the default branch. Public visibility is intentional.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
   is open, mergeable, and points from `ci/github-actions-foundation` to `main`.
-- Starting branch, remote-tracking branch, and Pull Request head all matched the
-  current committed HEAD before Step 10 changes.
-- Working tree: contains only the final, uncommitted Step 10 persistent handoff
-  update after successful remote validation.
+- Starting branch, remote-tracking branch, and Pull Request head all matched
+  `5c11432939c3efe17f8189d09e64042e03d60822` before Step 11 changes.
+- Working tree: contains the uncommitted Step 11 measurement, documentation,
+  dependency, ignore, decision, and persistent handoff changes listed below.
 
 ## Current milestone
 
-- Step: Step 10 — Add the local integration CI job.
-- Status: DONE.
-- Completion blocker: none. The final persistent handoff update still requires
-  separate explicit user approval before its documentation-only commit and
-  push.
+- Step: Step 11 — Measure, document, and prepare branch protection.
+- Status: READY_FOR_COMMIT.
+- Completion blocker: explicit user approval is required before commit/push;
+  remote validation of the resulting exact commit and both artifacts must then
+  complete before Step 11 can become `DONE`.
 
 ## Verified starting state
 
 - Local branch, starting HEAD, remote-tracking branch, and Pull Request head all
-  equal `581d389c9b5072f80cb5eb2409b32a3716e09627`; the working tree was clean.
+  equal `5c11432939c3efe17f8189d09e64042e03d60822`; the working tree was clean.
 - Pull Request #1 was open, non-draft, mergeable, and targeted `main`.
-- Required workflow `CI` run #20, ID `36777531943`, completed successfully for
-  that final Step 9 handoff commit. Every `Python 3.11` job step completed with
+- Required workflow `CI` run #22, ID `36874430650`, completed successfully for
+  that exact final Step 10 handoff commit.
+- Job `Python 3.11`, ID `110410104000`, and every main/post step completed with
   conclusion `success`.
-- Its artifact `pytest-results-python-3.11`, ID `11126805181`, is not expired;
-  GitHub reports digest
-  `sha256:79a3bde2c877a4da19d3fa6ef2e2f8dbffebd517636807b370184f2c3139148b`.
-- The artifact was downloaded and inspected. It contains exactly non-empty
-  `pytest.xml` (`3481` bytes) and `pytest.log` (`961` bytes); the log reports
-  `22 passed`, and parsed JUnit totals are `22` tests, `0` failures, `0` errors,
-  and `0` skipped.
+- Job `Local Supabase integration`, ID `110410104398`, and every main/post step
+  completed with conclusion `success`, including local cleanup.
+- Artifact `pytest-results-python-3.11`, ID `11168572267`, was downloaded and
+  inspected. Its independent SHA-256 equals GitHub's digest
+  `sha256:9cd599649d7e0666aaf185832d2937d8f8eb3dd5c46031728df2bd38aca6e39b`.
+  It contains exactly non-empty `pytest.xml` (`3481` bytes) and `pytest.log`
+  (`961` bytes); JUnit totals are `22` tests, `0` failures, `0` errors, and `0`
+  skipped, and the log reports `22 passed in 0.20s`.
+- Artifact `local-integration-results`, ID `11168014395`, was downloaded and
+  inspected. Its independent SHA-256 equals GitHub's digest
+  `sha256:f6005522d6c62b966f11a40a33d6735deb2e3e21fd4239e937451f4bdc923e64`.
+  It contains exactly non-empty `database-tests.log` (`1395` bytes),
+  `pytest.xml` (`3481` bytes), and `pytest.log` (`979` bytes). The database log
+  reports `Files=1, Tests=18` and `Result: PASS`; JUnit totals are `22` tests,
+  `0` failures, `0` errors, and `0` skipped; pytest reports `22 passed in
+  0.30s`.
 
 ## Authorized source and remote discovery
 
@@ -129,6 +141,68 @@ does not define Product ordering, and `body` remains opaque.
   deferral of any provider-specific Python database adapter.
 - No schema, migration, database test, Python source/test/dependency, npm
   dependency, remote Supabase state, or Product behavior changed.
+
+## Implemented in Step 11
+
+- Added exact `coverage.py` `7.16.1` to the locked Python test environment in
+  both `pyproject.toml` and `requirements/test.txt`.
+- Configured statement and branch measurement for the installed
+  `tlm_device_data_platform` package. No `fail_under`, coverage artifact, new CI
+  command, or required coverage check was added.
+- The complete 22-test suite measures `88%` combined coverage: `253`
+  statements with `22` missed and `56` branches with `15` partial.
+- Added `docs/ci/TESTING_AND_BRANCH_PROTECTION.md`, a Russian guide for exact
+  local reproduction, artifact contracts, coverage, simulator fixtures, real
+  loopback HTTP/storage tests, local Supabase and pgTAP, safe test extension,
+  failure diagnosis, open Product decisions, and future branch protection.
+- Added `CI-DEC-015` to preserve the measured coverage baseline without
+  converting it into an arbitrary policy threshold.
+- Confirmed across successful runs #21 and #22 that the check contexts are
+  `Python 3.11` and `Local Supabase integration`; both are produced by GitHub
+  Actions App `15368`. Their Pull Request display names are respectively
+  `CI / Python 3.11` and `CI / Local Supabase integration`.
+- Read-only GitHub API inspection returned `404 Branch not protected` for
+  `main` protection and an empty repository-ruleset list. No repository
+  setting, branch protection, Pull Request state, or remote Supabase state was
+  changed.
+- No workflow, Product source, Python test, npm dependency, Supabase
+  configuration, migration, database test, or schema changed.
+
+## Step 11 local validation
+
+- Exact locked install in a fresh virtual environment: PASS; installed
+  `coverage==7.16.1`, `pytest==9.1.1`, and the pinned transitive set, followed
+  by a successful `pip check`.
+- Full clean-environment coverage run: PASS (`22 passed`); `coverage report`
+  reproduced the `88%` total and exact statement/branch counts recorded above.
+- Existing-environment standard Python artifact reproduction: PASS (`22`
+  tests, `0` failures, `0` errors, `0` skipped); exactly non-empty
+  `test-results/pytest.xml` and `test-results/pytest.log` were produced.
+- Clean `npm ci`: PASS (`9` packages); `npm ls --depth=0` listed only
+  `supabase@2.118.0`, and the exact CLI assertion returned `2.118.0`.
+- A clean disposable local Supabase start and `db reset --local`: PASS; the
+  committed migration applied.
+- `supabase test db`: PASS (`1` file, `18` tests, `Result: PASS`).
+- Full pytest while local Supabase was running: PASS (`22` tests, `0`
+  failures, `0` errors, `0` skipped).
+- Local integration result contract: PASS; exactly non-empty
+  `database-tests.log`, `pytest.xml`, and `pytest.log` contain the expected
+  pgTAP and pytest totals.
+- `supabase stop --no-backup`: PASS; the isolated Docker daemon reported zero
+  remaining containers and was then stopped and removed with its disposable
+  runtime data. Host Docker configuration was not changed.
+- The first isolated rootless Docker attempt used the `vfs` driver and was
+  abandoned after registry-rate and temporary disk-quota failures. Its daemon
+  and UID-mapped storage were removed. A fresh `overlay2` daemon completed the
+  exact validation after transient registry retries; no failed attempt was
+  counted as validation evidence.
+- The ordinary sandbox disallowed loopback socket creation and dependency
+  download. The same commands were repeated unchanged with only the required
+  loopback/network capabilities; both then passed.
+- Dependency/configuration assertions, documented-path checks, artifact
+  parsing, secret and hosted-endpoint scans, generated-state checks,
+  whitespace checks, and confirmation that workflow/source/tests/package lock/
+  Supabase files are unchanged: PASS.
 
 ## Step 10 local validation
 
@@ -226,12 +300,24 @@ does not define Product ordering, and `body` remains opaque.
 ## Required CI
 
 - Pull Request workflow: `.github/workflows/ci.yml`.
-- Required Python job: `CI / Python 3.11`.
-- Required database/integration job: `CI / Local Supabase integration`.
+- Candidate required Python check: context `Python 3.11`, displayed as
+  `CI / Python 3.11`, produced by GitHub Actions App `15368`.
+- Candidate required database/integration check: context
+  `Local Supabase integration`, displayed as
+  `CI / Local Supabase integration`, produced by GitHub Actions App `15368`.
+- Neither check is currently enforced by branch protection; `main` has no
+  protection and the repository has no rulesets as of the Step 11 read-only
+  inspection.
+- Detailed reproduction and diagnosis guide:
+  `docs/ci/TESTING_AND_BRANCH_PROTECTION.md`.
 - Local Python reproduction:
   - `.venv/bin/python -m pip install --constraint requirements/test.txt '.[test]'`
   - `.venv/bin/python -m pip check`
   - `.venv/bin/python -m pytest`
+- Local coverage measurement after the same locked install:
+  - `.venv/bin/python -m coverage erase`
+  - `.venv/bin/python -m coverage run -m pytest`
+  - `.venv/bin/python -m coverage report`
 - Local database reproduction after `npm ci`:
   - `npx --no-install supabase start`
   - `npx --no-install supabase db reset --local`
@@ -240,6 +326,8 @@ does not define Product ordering, and `body` remains opaque.
 - Both jobs require no physical hardware, GitHub secret, remote Supabase project,
   hosted PostgreSQL instance, or production service. The local integration job
   uses only Docker-backed disposable services on its clean GitHub runner.
+- Coverage is measured locally at `88%` but has no threshold and is not a
+  required check.
 
 ## Product decisions still OPEN
 
@@ -257,27 +345,33 @@ does not define Product ordering, and `body` remains opaque.
   policies.
 - Command authority, SLO, production scale, and cost.
 
-## Files changed in Step 10
+## Files changed in Step 11
 
-- `.github/workflows/ci.yml`
+- `.gitignore`
+- `pyproject.toml`
+- `requirements/test.txt`
+- `docs/ci/TESTING_AND_BRANCH_PROTECTION.md`
 - `docs/ci/CI_PLAN.md`
 - `docs/ci/CI_STATE.md`
 - `docs/ci/NEXT_SESSION.md`
 - `docs/ci/DECISIONS.md`
 - `docs/ci/FLOW_EXPLANATIONS.md`
 
-No Python source, Python test, Python dependency, npm dependency, Supabase
-configuration, migration, or database test changed.
+No workflow, Python source, Python test, npm dependency, package lock,
+Supabase configuration, migration, database test, schema, or Product behavior
+changed.
 
 ## Next step
 
-- Step: Step 11 — Measure, document, and prepare branch protection.
-- Activation requires the final Step 10 handoff update to be committed and
+- Step: Step 12 — Apply explicitly approved branch protection.
+- Activation requires the final Step 11 handoff update to be committed and
   pushed, both Pull Request jobs to succeed on that exact final handoff commit,
   and both published result artifacts to be downloaded and inspected in the
   next session.
-- Do not enable branch protection or merge the Pull Request without separate
-  explicit user approval.
+- Before any mutation, reconfirm the current protection/ruleset state and obtain
+  explicit user decisions for every setting in the exact proposed payload.
+- Do not enable any unapproved protection option, add a coverage threshold, or
+  merge or close the Pull Request.
 
-Use `docs/ci/BOOTSTRAP_PROMPT.md` for the next session. Do not start Step 11 in
+Use `docs/ci/BOOTSTRAP_PROMPT.md` for the next session. Do not start Step 12 in
 this session.

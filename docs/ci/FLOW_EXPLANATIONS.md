@@ -3529,3 +3529,228 @@ required CI не зависит от физического устройства
 должен быть проверен в начале следующей сессии до любых изменений Step 11, чтобы
 не создавать бесконечную цепочку self-referential handoff commits. Step 11 в
 этой сессии не начинался.
+
+## Step 11 — Измерение coverage, руководство по тестированию и подготовка branch protection
+
+### Короткий итог
+
+Шаг 11 подготовил проверяемую основу для будущего решения о защите `main`, но не
+включал саму защиту. В locked test environment добавлен `coverage.py 7.16.1`, а
+полный набор из 22 тестов измерен по statements и branches для установленного
+пакета. Полученный baseline равен `88%`: 253 statements, 22 missed statements,
+56 branches и 15 partial branches. Это измерение сохранено как факт, а не как
+новое обязательное требование: `fail_under` не задан, отдельный coverage check
+не появился, workflow не изменён.
+
+Создано русскоязычное руководство
+`docs/ci/TESTING_AND_BRANCH_PROTECTION.md`. Оно собирает в одном месте точные
+команды воспроизведения двух CI jobs и их artifacts, coverage, устройство
+симулятора и TEST FIXTURE данных, реальные loopback HTTP/storage сценарии,
+локальный Supabase lifecycle, migrations и pgTAP, правила безопасного
+расширения тестов, разбор типовых падений, открытые Product decisions и факты,
+которые необходимо учитывать при отдельном решении о branch protection.
+
+### Зачем был нужен этот шаг
+
+К окончанию Step 10 репозиторий уже имел два успешных Pull Request jobs, но ещё
+не было трёх важных частей эксплуатационного контракта. Во-первых, нельзя было
+обоснованно обсуждать coverage threshold без предварительного измерения
+фактической базы. Во-вторых, команды и границы тестового потока были
+распределены между workflow, конфигурацией и историческими handoff-файлами, что
+усложняло локальное воспроизведение и диагностику. В-третьих, для будущего
+required-status-check правила требовалось подтвердить не только отображаемые
+названия jobs, но и стабильные check contexts и их provider identity.
+
+Шаг решает именно эти задачи. Он не превращает наблюдаемое покрытие в Product
+или quality policy и не угадывает настройки управления веткой. Такой порядок
+важен: сначала измерение и документированный operational flow, затем отдельное
+явное решение пользователя о каждом изменяемом branch-protection поле.
+
+### Проверка исходного состояния
+
+До любых изменений local HEAD, `origin/ci/github-actions-foundation` и head Pull
+Request #1 совпадали с final Step 10 handoff commit
+`5c11432939c3efe17f8189d09e64042e03d60822`; working tree был чистым. Pull
+Request оставался открытым, non-draft, mergeable и направленным в `main`.
+
+Workflow `CI`, run #22, ID `36874430650`, завершился `success` именно на этом
+commit. Job `Python 3.11`, ID `110410104000`, и job
+`Local Supabase integration`, ID `110410104398`, прошли со всеми основными и
+post steps. Это подтвердило, что Step 11 начинается не с предположения о
+предыдущем handoff, а с удалённо проверенного состояния.
+
+Оба опубликованных artifacts были скачаны и проверены независимо:
+
+- `pytest-results-python-3.11`, ID `11168572267`, имел GitHub digest и локально
+  вычисленный digest
+  `sha256:9cd599649d7e0666aaf185832d2937d8f8eb3dd5c46031728df2bd38aca6e39b`.
+  Архив содержит ровно непустые `pytest.xml` размером 3481 bytes и
+  `pytest.log` размером 961 bytes. JUnit показывает 22 tests без failures,
+  errors или skipped; log заканчивается `22 passed in 0.20s`.
+- `local-integration-results`, ID `11168014395`, имел совпадающие GitHub и
+  независимо вычисленный digests
+  `sha256:f6005522d6c62b966f11a40a33d6735deb2e3e21fd4239e937451f4bdc923e64`.
+  Архив содержит ровно непустые `database-tests.log` размером 1395 bytes,
+  `pytest.xml` размером 3481 bytes и `pytest.log` размером 979 bytes. Database
+  log сообщает `Files=1, Tests=18` и `Result: PASS`; JUnit показывает те же 22
+  Python tests без failures, errors или skipped, а log заканчивается
+  `22 passed in 0.30s`.
+
+### Что изменилось
+
+В `pyproject.toml` и `requirements/test.txt` добавлена одна exact test
+dependency: `coverage==7.16.1`. В `pyproject.toml` включено branch measurement,
+а source ограничен установленным пакетом `tlm_device_data_platform`. Это не
+измеряет сам test code, временные artifacts или сторонние библиотеки. В
+`.gitignore` добавлен локальный generated data file `.coverage`.
+
+Конфигурация намеренно не содержит `fail_under`. Обычный CI по-прежнему
+запускает тот же pytest, публикует те же artifacts и имеет те же check names.
+Coverage запускается отдельными локальными командами после того же locked
+install:
+
+1. `.venv/bin/python -m coverage erase`
+2. `.venv/bin/python -m coverage run -m pytest`
+3. `.venv/bin/python -m coverage report`
+
+Добавлен `CI-DEC-015`. Он фиксирует версию инструмента, scope измерения,
+полученный baseline и явное отсутствие threshold. Будущий threshold, artifact
+или required coverage check потребует нового рассмотрения на основе истории,
+а не одного числа.
+
+Новое руководство описывает два независимых слоя проверки. Быстрый Python job
+проверяет package install, simulator/domain behavior, реальные локальные
+HTTP/storage boundaries и свой двухфайловый artifact. Более тяжёлый integration
+job поднимает disposable Supabase, чисто применяет migration, выполняет 18
+pgTAP assertions, повторяет полный Python suite, всегда останавливает stack и
+публикует отдельный трёхфайловый artifact. Команды в документе повторяют CI
+контракт и не требуют physical hardware, production Supabase или GitHub
+secrets.
+
+### Coverage result и его смысл
+
+Полный suite дал следующий результат:
+
+- `local_integration.py`: 79 statements, 14 missed, 20 branches, 10 partial,
+  76%;
+- `simulation.py`: 87 statements, 1 missed, 14 branches, 1 partial, 98%;
+- `telemetry_fixture.py`: 87 statements, 7 missed, 22 branches, 4 partial,
+  90%;
+- total: 253 statements, 22 missed, 56 branches, 15 partial, 88%.
+
+Baseline показывает, где остаются непроверенные error paths, но сам по себе не
+доказывает, что каждый из них должен блокировать Pull Request. Поэтому Step 11
+не добавляет тесты ради процента, не исключает неудобные строки и не принимает
+произвольный minimum. Новые тесты должны по-прежнему доказывать осмысленное
+поведение или подтверждённый контракт.
+
+### Стабильные checks и фактическое состояние защиты
+
+GitHub data для успешных runs #21 и #22 подтвердили одинаковые contexts:
+`Python 3.11` и `Local Supabase integration`. Оба созданы GitHub Actions App с
+ID `15368`. В интерфейсе Pull Request они отображаются как
+`CI / Python 3.11` и `CI / Local Supabase integration`. Это различие сохранено
+в документации, чтобы будущая настройка не подменила API context визуальным
+label и не привязалась к одноимённому check от другого provider.
+
+Read-only запрос текущей защиты `main` вернул `404 Branch not protected`, а
+список repository rulesets был пустым. Эти результаты означают только, что
+защиты сейчас нет. В Step 11 ни один GitHub setting не менялся, Pull Request не
+merge/close, а checks не объявлялись required. Документация перечисляет поля,
+которые пользователь должен явно решить в следующем отдельном шаге: strictness,
+точные checks/provider, reviews, administrator/bypass behavior, conversations,
+signed commits, linear history, force pushes и deletion.
+
+### Что происходило во время реализации и как решались проблемы
+
+Первый coverage запуск в обычной sandbox среде прошёл 20 тестов, но два
+loopback integration tests получили `PermissionError` при создании socket.
+Это ограничение execution sandbox, а не ошибка тестов: те же команды без
+изменения кода или данных были повторены с разрешённой loopback capability и
+дали 22 passed и 88%. Этот первый запуск не использовался как положительное
+доказательство.
+
+Для проверки dependency lock был создан чистый temporary virtual environment.
+Первая установка не смогла обратиться к package index из-за sandbox DNS/network
+restriction. Тот же exact install был повторён с разрешённым network access,
+после чего установились `coverage 7.16.1`, `pytest 9.1.1` и закреплённые
+transitive dependencies; `pip check` прошёл. Никакая версия для обхода ошибки
+не менялась.
+
+Host Docker socket был недоступен, поэтому local Supabase проверялся на
+изолированном rootless Docker daemon в `/tmp`. Первая попытка с storage driver
+`vfs` столкнулась с transient registry rate limits и расходом временной disk
+quota. Daemon был остановлен, его containers и UID-mapped storage полностью
+удалены, а результат не был засчитан. Свежий изолированный daemon с `overlay2`
+после повторов transient registry загрузок успешно выполнил startup, clean
+reset, pgTAP, pytest и cleanup. После проверки контейнеров не осталось; daemon,
+runtime и temporary data были удалены, host Docker configuration не менялась.
+
+При отдельных GitHub CLI операциях установленный snap иногда блокировался
+локальным AppArmor профилем. Read-only запросы и exact artifact downloads были
+повторены последовательно с необходимым доступом; полученные ZIP digests
+совпали с GitHub metadata. Это локальная особенность инструмента и не относится
+к GitHub Actions runs.
+
+### Проверка и что она доказывает
+
+В свежем virtual environment exact locked install и `pip check` прошли. Полный
+coverage run дал 22 passed и повторил точные 88% и все component counts.
+Обычная Python artifact-команда также прошла и сформировала ровно два ожидаемых
+непустых файла; XML был программно проверен на 22 tests, 0 failures, 0 errors и
+0 skipped.
+
+Чистый `npm ci` установил 9 packages, а `npm ls --depth=0` показал только
+`supabase@2.118.0`; exact CLI assertion вернул `2.118.0`. На свежем disposable
+local stack migration применилась после `db reset --local`, pgTAP сообщил один
+файл, 18 tests и `Result: PASS`, полный pytest дал 22 passed. Три integration
+result files были проверены на наличие, непустое содержимое и точные totals.
+`supabase stop --no-backup` завершился успешно, после чего Docker показал ноль
+оставшихся containers.
+
+Отдельно прошли TOML assertions для exact dependency/configuration и отсутствия
+`fail_under`, проверка всех документированных путей, whitespace checks и scans
+на hosted Supabase URL, PostgreSQL URL, project reference, JWT-подобные значения
+и access tokens. Diff подтвердил отсутствие изменений в workflow, Product
+source, Python tests, `package.json`, `package-lock.json`, Supabase config,
+migration и database test. Generated `.coverage`, virtual environment, caches,
+node modules, Supabase temporary state и test results остаются ignored.
+
+В совокупности это доказывает воспроизводимость нового measurement tooling,
+неизменность обязательного CI flow, работоспособность обеих локальных
+репродукций и достаточность документации для диагностики. Это ещё не доказывает
+удалённый результат на будущем Step 11 commit: такая проверка возможна только
+после отдельно разрешённых commit и push.
+
+### Что сознательно осталось вне Step 11
+
+В шаг не входят:
+
+- включение branch protection или repository ruleset;
+- выбор strict mode, review count, admin enforcement или любого другого
+  governance default;
+- Pull Request merge, close или изменение target branch;
+- coverage threshold, coverage artifact или required coverage check;
+- изменение GitHub Actions workflow, job names или test commands;
+- новые Product tests или изменение TEST FIXTURE semantics ради процента;
+- Product source, API contract или provider-specific database adapter;
+- новая table, column, migration, grant, RLS policy или database test;
+- remote Supabase link, push, deployment или иная remote mutation;
+- physical hardware, production service, credential, SLO или scale policy;
+- начало Step 12.
+
+### Состояние перед commit approval
+
+Implementation, local validation, `CI-DEC-015`, руководство и persistent
+handoff подготовлены. `CI_PLAN.md` и `CI_STATE.md` имеют статус
+`READY_FOR_COMMIT`. `NEXT_SESSION.md` описывает только Step 12 и запрещает его
+активацию до final Step 11 handoff commit/push, успешного прохождения обоих jobs
+на exact commit и проверки обоих artifacts.
+
+Step 11 ещё не считается `DONE`. Сначала требуется явное разрешение пользователя
+на commit и push текущей реализации. После push нужно проверить совпадение local
+HEAD, remote-tracking branch и Pull Request head, дождаться обоих jobs, проверить
+каждый ожидаемый step, скачать оба artifacts, сверить GitHub и независимые
+digests и проверить точный состав и test totals. Только затем можно обновить
+remote handoff и отдельно запросить разрешение на его documentation-only
+commit/push. Никакая настройка branch protection в этой сессии не выполняется.
