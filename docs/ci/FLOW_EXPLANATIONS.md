@@ -3814,3 +3814,207 @@ contexts и provider identity стабильны на implementation commit. Ste
 него run должен быть проверен в начале следующей сессии до активации Step 12,
 как требует `NEXT_SESSION.md`. Это предотвращает бесконечную цепочку handoff
 commits и не означает начало настройки branch protection в текущей сессии.
+
+---
+
+## Step 12 — Явно утверждённая защита ветки `main`
+
+### Короткий итог
+
+Step 12 включил classic branch protection для `main` только после отдельного
+явного утверждения всех изменяемых полей. Два ранее проверенных CI contexts
+теперь обязательны, привязаны к GitHub Actions App `15368` и должны проходить
+на branch, актуальной относительно `main`. Правило применяется к administrator,
+требует Pull Request и закрытия review conversations, запрещает force push и
+deletion, но не требует approvals, signed commits или linear history.
+
+Pull Request #1 не был merge или close. После включения защиты GitHub правильно
+показывает его merge state как `blocked`, потому что в PR остался один старый
+unresolved review thread. Он уже outdated, branch не отстаёт, а оба required
+checks успешны. Thread намеренно не менялся: его resolution не входил в
+утверждённую конфигурацию.
+
+### Почему этот шаг был нужен
+
+К концу Step 11 репозиторий имел воспроизводимый Pull Request workflow, два
+успешно повторяющихся job и проверенные artifacts, но `main` оставалась
+незащищённой. Успешный check сам по себе не делает его обязательным: без branch
+protection GitHub только показывает результат, но не использует его как merge
+gate.
+
+Step 12 переводит измеренный и проверенный CI contract в repository governance.
+При этом нельзя было выбрать настройки по неявным defaults: strictness,
+provider checks, approvals, administrator behavior, conversations, signatures,
+history, force pushes и deletion по-разному влияют на разработку и аварийные
+операции. Поэтому каждый отправленный параметр был сначала показан пользователю
+как единая точная конфигурация.
+
+### Проверка исходного состояния
+
+Local HEAD, `origin/ci/github-actions-foundation` и head Pull Request #1
+совпали с final Step 11 handoff commit
+`9f74490a0f415aaaf23a202c5bd0665a432f8b1a`; working tree был чистым. PR был
+open, non-draft, mergeable и направлен в `main`.
+
+Workflow `CI`, run #24, ID `36902702860`, завершился `success` именно на этом
+commit. Job `Python 3.11`, ID `110505497845`, и job
+`Local Supabase integration`, ID `110505497485`, завершили успешно каждый
+setup, install, test, result-validation, artifact, cleanup и post step.
+Check-runs подтвердили contexts `Python 3.11` и
+`Local Supabase integration`, conclusion `success` и provider GitHub Actions
+App `15368`. Сторонний `Sourcery review` принадлежал App `48477`, имел
+conclusion `skipped` и не вошёл в required set.
+
+Оба artifacts run #24 были скачаны как ZIP и проверены независимо:
+
+- `pytest-results-python-3.11`, ID `11182775775`, archive size 1491 bytes.
+  GitHub digest и локальный SHA-256 совпали:
+  `sha256:7eb19c484e34d09155a04dc6f740ff57b88ed47904b9ed79b9bfc5d105e91801`.
+  Архив содержит ровно непустые `pytest.xml` размером 3481 bytes и
+  `pytest.log` размером 961 bytes. JUnit сообщает 22 tests без failures,
+  errors или skipped; pytest сообщает `22 passed in 0.30s`.
+- `local-integration-results`, ID `11181977994`, archive size 2242 bytes.
+  GitHub digest и локальный SHA-256 совпали:
+  `sha256:472d0315c32090fbcc55a49409cdcbf4486745b9ccb01fc2ba89186b124072b5`.
+  Архив содержит ровно непустые `database-tests.log` размером 1395 bytes,
+  `pytest.xml` размером 3481 bytes и `pytest.log` размером 979 bytes. Database
+  suite сообщает один файл, 18 tests и `Result: PASS`; JUnit сообщает 22 tests
+  без failures, errors или skipped, а pytest — `22 passed in 0.44s`.
+
+Scans распакованного содержимого не нашли hosted Supabase endpoint, PostgreSQL
+connection URL, JWT-подобное значение, token, password, secret или service-role
+key. Temporary download directory был удалён. Непосредственно перед mutation
+GitHub снова вернул `404 Branch not protected` для `main` и пустой repository
+ruleset list.
+
+### Утверждённая конфигурация
+
+Пользователь явно утвердил `PROTECTION v1` со следующей семантикой:
+
+- `strict = true`;
+- required checks `Python 3.11` и `Local Supabase integration`, каждый с
+  `app_id = 15368`;
+- Pull Request requirement с `required_approving_review_count = 0`;
+- `dismiss_stale_reviews = false`;
+- `require_code_owner_reviews = false`;
+- `require_last_push_approval = false`;
+- `enforce_admins = true`;
+- `restrictions = null`, без bypass allowances;
+- `required_conversation_resolution = true`;
+- `required_linear_history = false`;
+- `allow_force_pushes = false`;
+- `allow_deletions = false`;
+- `block_creations = false`;
+- `lock_branch = false`;
+- `allow_fork_syncing = false`;
+- signed commits остаются выключены, поэтому отдельный signature mutation не
+  выполняется.
+
+Эта комбинация делает оба проверенных CI job настоящим gate, требует проверять
+актуальный base и не даёт administrator обойти checks. Нулевое число approvals
+оставляет рабочий flow для personal repository, но PR и resolution известных
+discussion threads всё равно обязательны. Выключенные signing и linear-history
+options не навязывают новый commit/tooling contract, а запрет force push и
+deletion защищает основную ветку от трудно восстанавливаемых операций.
+
+### Что произошло при применении
+
+Первый `PUT` с утверждённым `PROTECTION v1` содержал одновременно пустой
+`contexts` array и provider-bound `checks`. GitHub отклонил весь запрос с HTTP
+`422`: фактическая active API schema считает `contexts` и `checks`
+взаимоисключающими. Это не было частичным применением. Немедленный read-back
+снова вернул `404 Branch not protected`, а ruleset list остался пустым.
+
+Поскольку инструкция требовала применить exact approved payload, пустой
+`contexts` не был молча удалён. Пользователю было показано единственное
+структурное исправление: оставить `strict` и `checks`, но убрать пустой
+`contexts`. Пользователь отдельно утвердил эту schema-corrected конфигурацию
+как `PROTECTION v1.1`. Ни одна семантическая настройка не изменилась.
+
+После этого один `PUT` был принят. Ответ GitHub показал обе записи `checks` с
+точными contexts и `app_id = 15368`, а также все остальные утверждённые поля.
+Никакой вызов required-signatures endpoint, ruleset mutation или второй
+repository-setting change не выполнялся.
+
+### Read-back и фактическое поведение
+
+Полный independent read-back и отдельные endpoints required status checks,
+Pull Request reviews и required signatures совпали с `PROTECTION v1.1` по
+каждому полю. GitHub возвращает:
+
+- `main.protected = true`;
+- `strict = true`;
+- ровно два required contexts и две provider-bound записи `checks`;
+- оба `app_id = 15368`;
+- zero approvals и три выключенных review sub-options;
+- admin enforcement enabled;
+- conversation resolution enabled;
+- signatures, linear history, force pushes, deletion, creation blocking, lock
+  и fork syncing disabled;
+- rulesets `[]`.
+
+После включения правила Pull Request #1 остался open, non-draft и технически
+mergeable, но `mergeStateStatus` стал `BLOCKED`. Дополнительная диагностика
+показала `behind_by = 0`; оба required checks успешны. GraphQL read-back нашёл
+ровно один unresolved review thread, оставленный на раннем commit
+`72380506cbae287db8858a55e041fd4186054f1a`; thread теперь `outdated`.
+Следовательно, блокировка доказывает реальное действие утверждённого
+conversation-resolution gate. Thread не был автоматически resolved или
+dismissed, потому что это отдельная remote mutation и не требовалась для
+настройки защиты.
+
+### Что изменилось в repository documentation
+
+Добавлен `CI-DEC-016`, фиксирующий полный governance contract и его границы.
+`TESTING_AND_BRANCH_PROTECTION.md` теперь описывает действующую, а не будущую
+защиту и объясняет текущий merge blocker. `CI_PLAN.md`, `CI_STATE.md` и
+`NEXT_SESSION.md` обновлены для точной передачи состояния и последующей
+remote проверки documentation commit.
+
+Source code, tests, dependencies, workflow, job names, coverage configuration,
+Supabase configuration, migration, database test и schema не менялись. Remote
+Supabase не использовался и не изменялся.
+
+### Проверка и что она доказывает
+
+Проверка starting commit доказала, что branch protection опирается на
+успешный exact CI state и проверенные artifacts, а не только на исторические
+имена jobs. Provider identity проверена напрямую в check runs.
+
+Pre-change read-back доказывает отсутствие скрытой существующей защиты; HTTP
+`422` read-back доказывает атомарный отказ первого payload; post-change full и
+subresource read-backs доказывают точное применение исправленного утверждённого
+payload. Состояние Pull Request демонстрирует, что required conversations
+действительно блокируют merge. Отсутствие rulesets исключает вторую
+перекрывающую governance layer.
+
+Documentation consistency, secret scan, whitespace check и diff review прошли
+перед запросом commit approval. Поскольку Product и workflow files не
+менялись, повторный локальный Docker/Supabase run не добавил бы доказательств к
+repository-setting change; required flow будет повторно проверен GitHub на
+exact documentation commit после отдельно разрешённого push.
+
+### Что сознательно осталось вне Step 12
+
+В шаг не входят:
+
+- resolution или dismissal существующего review thread;
+- merge или close Pull Request #1;
+- изменение target branch, workflow, job names или CI commands;
+- repository ruleset или дополнительный bypass actor;
+- required approval, CODEOWNERS policy или commit-signing rollout;
+- coverage threshold, artifact или новый required check;
+- Product source, fixtures, API contract, dependencies или tests;
+- database schema, migration, grant, RLS policy или database test;
+- remote Supabase link, deployment или другая remote mutation;
+- physical hardware, production service, credential, SLO или scale decision;
+- начало следующего логического CI шага.
+
+### Состояние перед commit approval
+
+`PROTECTION v1.1` уже active и полностью verified. Persistent documentation и
+handoff подготовлены со статусом `READY_FOR_COMMIT`. Текущий diff является
+documentation-only и требует отдельного явного разрешения пользователя на
+commit/push. После push нужно проверить exact remote commit, оба jobs, каждый
+их step, оба artifacts и неизменность полного branch-protection read-back.
+Только после этого Step 12 можно перевести в окончательный `DONE`.

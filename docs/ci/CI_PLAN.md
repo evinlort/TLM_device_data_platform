@@ -277,7 +277,7 @@ Implementation summary:
 
 ### Step 12 — Apply explicitly approved branch protection
 
-Status: NOT_STARTED
+Status: READY_FOR_COMMIT
 
 Acceptance criteria:
 
@@ -293,6 +293,36 @@ Acceptance criteria:
 
 Dependencies: Step 11 and explicit user approval of the exact protection
 configuration.
+
+Implementation summary:
+
+- Verified final Step 11 handoff commit
+  `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`, successful run #24, every job
+  step, both independently downloaded artifacts, stable check contexts, and
+  GitHub Actions provider `15368` before mutation.
+- Confirmed immediately before mutation that `main` had no protection and the
+  repository had no rulesets.
+- Obtained explicit approval for every proposed setting. The first approved
+  request was rejected atomically with HTTP `422` because the active GitHub API
+  schema does not accept `contexts` and `checks` together. Verified that no
+  setting changed, then obtained explicit approval for `PROTECTION v1.1`, which
+  only omitted the empty `contexts` member.
+- Applied one successful classic branch-protection request to `main`: strict
+  freshness, the two provider-bound CI checks, zero required approvals, admin
+  enforcement, required conversation resolution, no push restrictions or
+  bypass allowances, and all other reviewed boolean choices exactly as
+  approved.
+- Independent full and subresource read-backs match every approved field;
+  `main` reports protected, signed commits remain disabled, and rulesets remain
+  empty.
+- Pull Request #1 remains open and unmerged. The new conversation-resolution
+  requirement correctly exposes one old unresolved, outdated review thread and
+  therefore reports merge state `blocked`; the branch is not behind and both
+  required checks are successful. The thread was intentionally not mutated.
+- No Product, workflow, coverage, test, dependency, database, remote Supabase,
+  Pull Request content, or ruleset change was made.
+- Documentation and persistent handoff are prepared for a separately approved
+  documentation-only commit/push and exact remote validation.
 
 ## Dependency order
 

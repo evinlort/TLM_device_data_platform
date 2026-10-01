@@ -558,3 +558,56 @@ Source:
 
 Step 11 clean-environment coverage measurement and Coverage.py guidance
 verified on 2026-10-01.
+
+## CI-DEC-016 — Provider-bound classic protection for `main`
+
+Status: ACCEPTED
+
+Decision:
+
+Protect `main` with GitHub classic branch protection. Require the check
+contexts `Python 3.11` and `Local Supabase integration`, each explicitly bound
+to GitHub Actions App `15368`, and require the Pull Request branch to be up to
+date before merge. Enable the Pull Request requirement with zero required
+approvals, no stale-review dismissal, no code-owner review requirement, and no
+last-push approval requirement. Enforce the rule for administrators, configure
+no push restriction or bypass allowance, and require review-conversation
+resolution. Do not require signed commits or linear history. Disallow force
+pushes and deletion; do not block branch creation, lock the branch, or enable
+fork syncing.
+
+Reason:
+
+The two checks were stable across successful Pull Request runs and were
+reconfirmed on the final Step 11 handoff commit with exact provider identity.
+Strict freshness prevents merging a result tested only against an older base.
+Zero required approvals preserves a workable Pull Request flow for this
+personal repository while conversation resolution prevents known review
+threads from being silently ignored. Administrator enforcement prevents the
+owner from bypassing the required CI contract. The remaining disabled options
+avoid adding signing, history-shape, push-restriction, or read-only policies
+that were not needed for the verified CI goal.
+
+Consequences:
+
+- A merge into `main` requires both named checks from GitHub Actions App
+  `15368` on an up-to-date branch.
+- Pull Requests do not require an approving reviewer, but every review
+  conversation must be resolved before merge.
+- The current Pull Request is reported as blocked because one old review thread
+  is unresolved even though it is outdated, the branch is not behind, and both
+  required checks are successful. Resolving that thread remains a separate
+  user action or separately authorized mutation.
+- Administrators are subject to the same protection; no actor is configured to
+  bypass Pull Request requirements and no actor-specific push restriction is
+  configured.
+- Coverage remains measured but is not a required check or threshold.
+- This decision does not authorize merging or closing Pull Request #1, changing
+  any workflow or check name, adding a ruleset, or changing Product or Supabase
+  state.
+
+Source:
+
+The user's explicit approvals of `PROTECTION v1` and the schema-corrected
+`PROTECTION v1.1`, GitHub API read-back on 2026-10-01, successful workflow run
+#24 on `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`, and `CI-DEC-015`.

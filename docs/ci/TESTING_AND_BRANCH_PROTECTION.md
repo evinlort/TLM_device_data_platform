@@ -347,7 +347,7 @@ credential из workflow; локальные generated keys также не ну
 Появление подтверждённого решения требует отдельного source/migration/test
 change. Нельзя молча повышать test fixture до Product contract.
 
-## Подтверждённые checks и будущая branch protection
+## Обязательные checks и действующая branch protection
 
 На commits `08b10d5eb0c450251fe23e3618a6d93ac7ac4aaa` (run #21) и
 `5c11432939c3efe17f8189d09e64042e03d60822` (run #22) два GitHub Actions jobs
@@ -362,21 +362,33 @@ change. Нельзя молча повышать test fixture до Product contr
 `Sourcery review` не входит в required CI этого repository и не предлагается
 как required check.
 
-Read-only проверка 2026-10-01 показала: ветка `main` не защищена, repository
-rulesets отсутствуют. Никакие settings не изменялись.
+На final Step 11 handoff commit
+`9f74490a0f415aaaf23a202c5bd0665a432f8b1a` run #24 ещё раз подтвердил оба
+контекста, их успешный результат и provider App `15368`. После отдельного
+явного approval в Step 12 для `main` включена classic branch protection:
 
-Минимальный предмет отдельного будущего approval — требовать перед merge оба
-контекста выше и, где интерфейс позволяет, ограничить provider приложением
-GitHub Actions `15368`. До применения пользователь должен отдельно решить:
+- `strict = true`: перед merge branch должна быть up to date;
+- обязательны только `Python 3.11` и `Local Supabase integration`, каждый
+  привязан к `app_id = 15368`;
+- Pull Request обязателен, но число required approvals равно нулю;
+- stale approvals не сбрасываются, code-owner review и approval последнего
+  push не требуются;
+- правила применяются к administrators, bypass allowances и push restrictions
+  отсутствуют;
+- все review conversations должны быть resolved;
+- signed commits и linear history не требуются;
+- force push и deletion запрещены;
+- branch creation blocking, branch lock и fork syncing выключены.
 
-- требуется ли branch быть up to date (`strict`);
-- нужны ли approvals и сколько;
-- применять ли правила к administrators;
-- требовать ли conversation resolution, signed commits или linear history;
-- разрешать ли force push, deletion и bypass.
+Полный read-back GitHub совпал с этими значениями; `main` сообщает
+`protected = true`, а repository rulesets по-прежнему отсутствуют. Coverage не
+стал required check и не получил threshold.
 
-Step 11 не выбирает эти repository governance settings, не включает branch
-protection и не выполняет merge Pull Request.
+Текущий Pull Request #1 технически mergeable и не отстаёт от `main`, оба
+required checks успешны, но merge-state равен `blocked`. Причина — одна старая
+unresolved review conversation, уже помеченная `outdated`. Это ожидаемое
+действие требования conversation resolution. Step 12 не закрывал thread и не
+выполнял merge или close Pull Request.
 
 ## Проверенные внешние references
 
@@ -386,6 +398,5 @@ protection и не выполняет merge Pull Request.
   <https://pypi.org/project/coverage/7.16.1/>;
 - GitHub protected branches и required checks:
   <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches>;
-- GitHub REST branch-protection fields `strict`, `contexts`, `checks` и
-  `app_id`:
+- GitHub REST branch-protection fields `strict`, `checks` и `app_id`:
   <https://docs.github.com/en/rest/branches/branch-protection>.

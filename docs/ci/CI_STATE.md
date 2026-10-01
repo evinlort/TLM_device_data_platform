@@ -3,9 +3,11 @@
 ## Repository
 
 - Branch: `ci/github-actions-foundation`.
-- Starting committed HEAD for Step 11:
-  `5c11432939c3efe17f8189d09e64042e03d60822`.
-- Step 11 implementation commit and current committed HEAD:
+- Starting committed HEAD for Step 12 and current committed HEAD:
+  `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`.
+- Final Step 11 handoff commit:
+  `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`.
+- Step 11 implementation commit:
   `55e8a18e7988445fffb4411a3648d4cdd6a629ae`.
 - Final Step 10 handoff commit:
   `5c11432939c3efe17f8189d09e64042e03d60822`.
@@ -18,24 +20,61 @@
 - GitHub repository: public `evinlort/TLM_device_data_platform` with `main` as
   the default branch. Public visibility is intentional.
 - Pull Request: [#1 — Add Python validation and pull request CI](https://github.com/evinlort/TLM_device_data_platform/pull/1)
-  is open, mergeable, and points from `ci/github-actions-foundation` to `main`.
-- Starting branch, remote-tracking branch, and Pull Request head all matched
-  `5c11432939c3efe17f8189d09e64042e03d60822` before Step 11 changes.
-- After the approved implementation push, local HEAD, remote-tracking branch,
-  and Pull Request head all match
-  `55e8a18e7988445fffb4411a3648d4cdd6a629ae`.
-- Working tree: contains only this uncommitted final Step 11 persistent handoff
-  update.
+  is open, non-draft, technically mergeable, and points from
+  `ci/github-actions-foundation` to `main`. Its merge-state status is `blocked`
+  because the approved conversation-resolution rule exposes one old unresolved
+  and now outdated review thread.
+- Local HEAD, remote-tracking branch, and Pull Request head all match
+  `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`.
+- Working tree: contains only the uncommitted Step 12 persistent handoff and
+  documentation update.
 
 ## Current milestone
 
-- Step: Step 11 — Measure, document, and prepare branch protection.
-- Status: DONE.
-- Completion blocker: none. The final documentation-only handoff update still
-  requires separate explicit approval before commit/push; Step 12 remains
-  inactive until that final handoff commit is remotely verified.
+- Step: Step 12 — Apply explicitly approved branch protection.
+- Status: READY_FOR_COMMIT.
+- Completion blocker: none for the repository setting. The approved protection
+  is active and verified; the documentation-only Step 12 handoff still requires
+  separate explicit approval before commit/push and subsequent remote CI and
+  artifact verification.
 
-## Verified starting state
+## Step 12 verified starting state
+
+- Final Step 11 handoff commit, local HEAD, remote-tracking branch, and Pull
+  Request head all matched
+  `9f74490a0f415aaaf23a202c5bd0665a432f8b1a`; the working tree was clean.
+- Pull Request #1 was open, non-draft, mergeable, and targeted `main`.
+- Workflow `CI`, run #24, ID `36902702860`, completed successfully for that
+  exact commit.
+- Job `Python 3.11`, ID `110505497845`, and all of its main/post steps completed
+  successfully. Job `Local Supabase integration`, ID `110505497485`, and all
+  setup, database, test, cleanup, artifact, and post steps also completed
+  successfully.
+- Check runs `Python 3.11` and `Local Supabase integration` both completed with
+  conclusion `success` and were produced by GitHub Actions App `15368`.
+  Third-party `Sourcery review` belonged to App `48477`, was skipped, and was
+  excluded from the approved required-check set.
+- Artifact `pytest-results-python-3.11`, ID `11182775775`, archive size `1491`
+  bytes, had matching GitHub and independently computed SHA-256
+  `7eb19c484e34d09155a04dc6f740ff57b88ed47904b9ed79b9bfc5d105e91801`.
+  It contained exactly non-empty `pytest.xml` (`3481` bytes) and `pytest.log`
+  (`961` bytes); JUnit reported `22` tests with zero failures, errors, or
+  skipped tests, and pytest reported `22 passed in 0.30s`.
+- Artifact `local-integration-results`, ID `11181977994`, archive size `2242`
+  bytes, had matching GitHub and independently computed SHA-256
+  `472d0315c32090fbcc55a49409cdcbf4486745b9ccb01fc2ba89186b124072b5`.
+  It contained exactly non-empty `database-tests.log` (`1395` bytes),
+  `pytest.xml` (`3481` bytes), and `pytest.log` (`979` bytes); pgTAP reported
+  one file, `18` tests, and `Result: PASS`, while JUnit reported `22` tests with
+  zero failures, errors, or skipped tests and pytest reported
+  `22 passed in 0.44s`.
+- Artifact scans found no hosted Supabase endpoint, PostgreSQL connection URL,
+  JWT-like value, token, password, secret, or service-role key. The disposable
+  download directory was removed after inspection.
+- Pre-change read-back returned `404 Branch not protected` for `main` and an
+  empty repository-ruleset list.
+
+## Step 11 verified starting state
 
 - Local branch, starting HEAD, remote-tracking branch, and Pull Request head all
   equal `5c11432939c3efe17f8189d09e64042e03d60822`; the working tree was clean.
@@ -348,17 +387,56 @@ does not define Product ordering, and `body` remains opaque.
   migrating to Ubuntu 26 on `2026-10-19`. The current exact run was successful;
   changing the existing Python job runner was outside Step 11.
 
+## Step 12 protection application and validation
+
+- The user explicitly approved `PROTECTION v1`, including every field in the
+  proposed classic branch-protection request. GitHub rejected the first request
+  with HTTP `422` because its active schema treats `contexts` and `checks` as
+  mutually exclusive even when `contexts` is an empty array. Read-back proved
+  that the rejected request created no protection or ruleset.
+- The user then explicitly approved `PROTECTION v1.1`, whose only structural
+  change was omitting the empty `contexts` member while preserving the exact
+  provider-bound `checks` and every other setting.
+- One successful `PUT` created classic branch protection for `main` with:
+  - `strict = true`;
+  - required check `Python 3.11` from GitHub Actions App `15368`;
+  - required check `Local Supabase integration` from GitHub Actions App
+    `15368`;
+  - Pull Request reviews enabled with zero required approvals,
+    `dismiss_stale_reviews = false`, `require_code_owner_reviews = false`, and
+    `require_last_push_approval = false`;
+  - administrator enforcement enabled and no push restrictions or bypass list;
+  - conversation resolution required;
+  - signed commits and linear history not required;
+  - force pushes and branch deletion disallowed;
+  - branch creation blocking, branch locking, and fork syncing disabled.
+- Independent full and subresource read-backs matched every approved field.
+  `main` now reports `protected = true`; required-signature read-back reports
+  `enabled = false`; repository rulesets remain empty.
+- Pull Request #1 remains open, non-draft, and technically mergeable. It is not
+  merged or closed. GitHub now reports merge-state `blocked`: the branch is not
+  behind `main` and both required checks are successful, but one old review
+  conversation from commit `72380506cbae287db8858a55e041fd4186054f1a`
+  remains unresolved and is now outdated. This is the intended observable
+  effect of `required_conversation_resolution = true`; the thread was not
+  resolved because doing so was not part of the approved mutation.
+- No workflow, CI command, coverage policy, Product source, test, dependency,
+  Supabase file, database schema, remote Supabase state, Pull Request content,
+  or repository ruleset changed.
+- Added `CI-DEC-016` and updated the testing/protection guide and persistent
+  handoff to record the approved governance contract and exact read-back.
+
 ## Required CI
 
 - Pull Request workflow: `.github/workflows/ci.yml`.
-- Candidate required Python check: context `Python 3.11`, displayed as
+- Required Python check: context `Python 3.11`, displayed as
   `CI / Python 3.11`, produced by GitHub Actions App `15368`.
-- Candidate required database/integration check: context
+- Required database/integration check: context
   `Local Supabase integration`, displayed as
   `CI / Local Supabase integration`, produced by GitHub Actions App `15368`.
-- Neither check is currently enforced by branch protection; `main` has no
-  protection and the repository has no rulesets as of the Step 11 read-only
-  inspection.
+- Both checks are enforced by classic branch protection on `main`, with
+  `strict = true` and explicit provider binding to App `15368`. Repository
+  rulesets remain absent.
 - Detailed reproduction and diagnosis guide:
   `docs/ci/TESTING_AND_BRANCH_PROTECTION.md`.
 - Local Python reproduction:
@@ -396,6 +474,21 @@ does not define Product ordering, and `body` remains opaque.
   policies.
 - Command authority, SLO, production scale, and cost.
 
+## Files changed in Step 12
+
+- `docs/ci/TESTING_AND_BRANCH_PROTECTION.md`
+- `docs/ci/CI_PLAN.md`
+- `docs/ci/CI_STATE.md`
+- `docs/ci/NEXT_SESSION.md`
+- `docs/ci/DECISIONS.md`
+- `docs/ci/FLOW_EXPLANATIONS.md`
+
+The only non-file change is the explicitly approved classic branch-protection
+configuration for `main`. No workflow, Python source/test/dependency, npm
+dependency, package lock, Supabase configuration, migration, database test,
+schema, Product behavior, remote Supabase state, Pull Request content, or
+repository ruleset changed.
+
 ## Files changed in Step 11
 
 - `.gitignore`
@@ -414,15 +507,16 @@ changed.
 
 ## Next step
 
-- Step: Step 12 — Apply explicitly approved branch protection.
-- Activation requires the final Step 11 handoff update to be committed and
-  pushed, both Pull Request jobs to succeed on that exact final handoff commit,
-  and both published result artifacts to be downloaded and inspected in the
-  next session.
-- Before any mutation, reconfirm the current protection/ruleset state and obtain
-  explicit user decisions for every setting in the exact proposed payload.
-- Do not enable any unapproved protection option, add a coverage threshold, or
-  merge or close the Pull Request.
+- Step: finish Step 12 remote verification after the documentation-only handoff
+  commit is explicitly approved, committed, and pushed.
+- Verify the exact pushed commit, both Pull Request jobs and both published
+  artifacts, and confirm that the complete `PROTECTION v1.1` read-back remains
+  unchanged.
+- Then prepare the final Step 12 handoff. No later CI implementation step is
+  currently authorized.
+- Do not resolve review conversations, merge or close Pull Request #1, change
+  protection, add a coverage threshold, or begin Product work without separate
+  explicit direction.
 
-Use `docs/ci/BOOTSTRAP_PROMPT.md` for the next session. Do not start Step 12 in
-this session.
+Use `docs/ci/BOOTSTRAP_PROMPT.md` if a new session is needed. Do not start a new
+logical CI step in this session.

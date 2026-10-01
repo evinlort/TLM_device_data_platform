@@ -2,21 +2,20 @@
 
 ## Activation condition
 
-Step 12 may start only after the final Step 11 persistent handoff update is
-committed and pushed, both Pull Request jobs succeed on that exact final
-handoff commit, and every published required result artifact is downloaded and
-inspected. Verify the actual branch, HEAD, remote, clean working tree, Pull
-Request, job details, artifact listings, digests, downloaded contents, current
-`main` protection, and repository rulesets against `docs/ci/CI_STATE.md` before
-any change.
+Continue Step 12 only after its current documentation-only handoff is committed
+and pushed with explicit user approval. Before any further change, verify the
+actual branch, exact local and remote HEAD, clean working tree, Pull Request,
+workflow run, both jobs, both artifacts, complete branch-protection read-back,
+required check/provider bindings, and repository rulesets against
+`docs/ci/CI_STATE.md`.
 
-The two candidate required checks must still appear as context `Python 3.11`
-and context `Local Supabase integration`, both produced by GitHub Actions App
-`15368`. Do not infer protection settings from their successful history.
+If the documentation commit has not been approved, committed, and pushed,
+remain in Step 12 and request only that approval. Do not alter the already
+verified protection configuration while waiting.
 
 ## Step
 
-Step 12 — Apply explicitly approved branch protection
+Step 12 — Finalize and remotely verify the approved branch-protection handoff
 
 ## Read first
 
@@ -28,68 +27,67 @@ Step 12 — Apply explicitly approved branch protection
 6. `docs/ci/TESTING_AND_BRANCH_PROTECTION.md`
 7. `docs/ci/FLOW_EXPLANATIONS.md`
 
-Read only additional workflow and GitHub repository-setting sources relevant
-to Step 12.
+Read only additional GitHub workflow, artifact, Pull Request, and repository
+setting sources relevant to this final Step 12 verification.
+
+## Current verified protection
+
+`main` uses classic branch protection with approved configuration
+`PROTECTION v1.1`:
+
+- `strict = true`;
+- required `Python 3.11` from GitHub Actions App `15368`;
+- required `Local Supabase integration` from GitHub Actions App `15368`;
+- Pull Request reviews enabled with zero required approvals;
+- stale-review dismissal, code-owner review, and last-push approval disabled;
+- administrator enforcement enabled, without push restrictions or bypass
+  allowances;
+- conversation resolution required;
+- signed commits and linear history disabled;
+- force pushes and deletion disabled;
+- branch-creation blocking, branch lock, and fork syncing disabled.
+
+Repository rulesets are empty. Pull Request #1 remains open and unmerged. Its
+merge state is blocked by one old unresolved, outdated review conversation;
+the branch is not behind and both required checks are successful.
 
 ## Goal
 
-Obtain explicit user approval for one exact branch-protection configuration,
-apply only that approved configuration to `main`, and verify the read-back
-state and required check/provider identities.
-
-## Decisions required before mutation
-
-Ask the user to decide every setting that the selected GitHub API or ruleset
-operation will write, including at minimum:
-
-- whether branches must be up to date before merging (`strict`);
-- the exact required checks and provider binding;
-- Pull Request approval count and stale/last-push behavior;
-- administrator enforcement and bypass behavior;
-- conversation resolution, signed commits, and linear history;
-- force-push and branch-deletion behavior.
-
-Do not supply a write request with invented defaults. A minimal proposal may
-name the two verified CI checks, but every field sent to GitHub requires
-explicit user approval.
+After the documentation-only Step 12 commit is pushed, prove that the exact
+commit passes both jobs and preserves both artifact contracts, and reconfirm
+that every protection field and required check/provider binding still matches
+`PROTECTION v1.1`. Then prepare the final persistent Step 12 handoff.
 
 ## Required approach
 
-- Reconfirm successful check identities on the final Step 11 handoff commit.
-- Reconfirm existing branch protection and rulesets before mutation.
-- Prefer provider-bound required checks using GitHub Actions App `15368` where
-  the chosen interface supports `app_id`.
-- Apply exactly one reviewed configuration after explicit approval.
-- Read back the effective configuration and compare every changed field with
-  the approved proposal.
-- Keep branch governance separate from coverage policy and Product behavior.
+- Match local HEAD, remote-tracking branch, and Pull Request head exactly.
+- Inspect the exact-commit Pull Request workflow run and every main/post job
+  step.
+- Download both published artifacts, compare GitHub and independently computed
+  SHA-256 digests, inspect exact non-empty contents, and verify pgTAP/JUnit/
+  pytest totals.
+- Read back full protection plus required checks, Pull Request reviews, signed
+  commits, branch protected state, and repository rulesets.
+- Reconfirm both required contexts are bound to GitHub Actions App `15368`.
+- Confirm the Pull Request remains open and unmerged; explain any merge-state
+  blocker without changing it.
+- Update the final Step 12 persistent handoff and request separate approval for
+  any resulting documentation-only commit/push.
 
 ## Out of scope and safety limits
 
+- Do not resolve or dismiss the existing review conversation without separate
+  explicit authorization.
 - Do not merge or close Pull Request #1.
-- Do not change workflow job names or CI commands merely to configure
-  protection.
-- Do not add a coverage threshold or required coverage check.
-- Do not deploy, link, or mutate any remote Supabase project.
-- Do not change Product source, database schema, migrations, tests, telemetry,
-  authorization, retention, SLO, or scale requirements.
-- Do not begin work beyond Step 12.
-
-## Validation
-
-At minimum:
-
-- exact local/remote branch and Pull Request head consistency;
-- both Pull Request jobs and every expected artifact verified on the final
-  Step 11 handoff commit;
-- pre-change protection/ruleset read-back;
-- approved request payload or UI choices reviewed field by field;
-- post-change protection/ruleset read-back matching the approval;
-- required check context and GitHub Actions provider identity verification;
-- repository documentation consistency, secret scan, and whitespace check.
+- Do not change `PROTECTION v1.1`, add a ruleset, rename checks, alter workflow
+  commands, or add a coverage threshold.
+- Do not deploy, link, or mutate a remote Supabase project.
+- Do not change Product source, schema, migrations, tests, telemetry,
+  authorization, retention, SLO, scale, or other Product requirements.
+- No later CI implementation step is currently authorized.
 
 ## Stop condition
 
-Stop after Step 12 protection configuration, verification, persistent handoff
-update, and any separately approved documentation commit/push. Do not merge or
-close Pull Request #1 without a later, separate explicit approval.
+Stop after exact remote verification and the final Step 12 persistent handoff.
+If no new work is explicitly authorized, record that the planned CI sequence
+through Step 12 is complete and wait for user direction.
