@@ -9,12 +9,13 @@ from http.client import HTTPException
 import importlib
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import re
 import sqlite3
 import ssl
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -25,6 +26,9 @@ from .telemetry_v1 import TelemetryV1
 from .private_config import load_private_config
 
 _LOG = logging.getLogger(__name__)
+DEFAULT_HTTP_TIMEOUT_SECONDS = 15.0
+DEFAULT_DRAIN_SECONDS = 15.0
+SENDER_JOIN_TIMEOUT_SECONDS = 6.0
 
 
 class OutboxFull(RuntimeError):
@@ -104,7 +108,8 @@ class Delivery:
 
 
 class HTTPSender:
-    def __init__(self, url: str, token: str, *, allow_insecure_http: bool = False):
+    def __init__(self, url: str, token: str, *, allow_insecure_http: bool = False,
+                 timeout_seconds: float = DEFAULT_HTTP_TIMEOUT_SECONDS):
         parsed = urlsplit(url)
         if (not parsed.hostname or parsed.username or parsed.password or parsed.query
                 or parsed.fragment or parsed.path != "/v1/telemetry"
@@ -114,7 +119,13 @@ class HTTPSender:
             raise ValueError("HTTPS required; insecure HTTP is an explicit isolated-lab option")
         if not re.fullmatch(r"[A-Za-z0-9_-]{43,128}", token):
             raise ValueError("Invalid device token format")
+        if (isinstance(timeout_seconds, bool)
+                or not isinstance(timeout_seconds, (int, float))
+                or not math.isfinite(timeout_seconds)
+                or timeout_seconds <= 0):
+            raise ValueError("timeout_seconds must be a positive finite number")
         self._url, self._token = url, token
+        self._timeout_seconds = float(timeout_seconds)
         self._opener = build_opener(_NoRedirects(), HTTPSHandler(context=ssl.create_default_context()))
 
     def send(self, body: bytes) -> Delivery:
@@ -123,7 +134,7 @@ class HTTPSender:
             "Authorization": f"Bearer {self._token}", "Content-Type": "application/json"})
         try:
             try:
-                response = self._opener.open(request, timeout=5)
+                response = self._opener.open(request, timeout=self._timeout_seconds)
             except HTTPError as error:
                 response = error
             with response:
@@ -180,16 +191,31 @@ def load_sensor(spec: str):
 
 
 def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
-              synchronized_clock=True, drain_seconds=10.0):
+              synchronized_clock=True, drain_seconds=DEFAULT_DRAIN_SECONDS):
     if interval <= 0 or count < 0 or drain_seconds < 0:
         raise ValueError("Invalid collection settings")
-    stop, failures = Event(), []
+    stop, failures, queue_access = Event(), [], Lock()
 
     def transmit():
         backoff = 1.0
         try:
             while not stop.is_set():
-                result = deliver_one(outbox, sender)
+                with queue_access:
+                    item = outbox.oldest()
+                if item is None:
+                    result = Delivery("idle")
+                else:
+                    message_id, body = item
+                    result = sender.send(body)
+                    with queue_access:
+                        if stop.is_set():
+                            break
+                        if result.action == "ack":
+                            outbox.acknowledge(message_id)
+                        elif result.action == "quarantine":
+                            outbox.quarantine(message_id, result.reason)
+                            _LOG.error("Message %s quarantined (%s)",
+                                       message_id, result.reason)
                 if result.action == "retry":
                     stop.wait(max(backoff, result.retry_after))
                     backoff = min(backoff * 2, 60)
@@ -206,7 +232,8 @@ def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
     try:
         # A recovered full queue must free a durable slot before the first sample.
         while not stop.is_set():
-            counts = outbox.counts()
+            with queue_access:
+                counts = outbox.counts()
             if sum(counts.values()) < outbox.max_records:
                 break
             if not counts.get("pending"):
@@ -219,17 +246,26 @@ def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
             readings = reader()
             captured = datetime.now(timezone.utc) if synchronized_clock else None
             message = TelemetryV1(outbox.device_id, uuid4(), stream_id, sequence_no, captured, readings)
-            outbox.enqueue(message.to_bytes())
+            with queue_access:
+                outbox.enqueue(message.to_bytes())
             sequence_no += 1
             deadline += interval
             if deadline < time.monotonic():
                 deadline = time.monotonic() + interval
         drain_until = time.monotonic() + drain_seconds
-        while not stop.is_set() and outbox.oldest() and time.monotonic() < drain_until:
+        while not stop.is_set() and time.monotonic() < drain_until:
+            with queue_access:
+                pending = outbox.oldest()
+            if pending is None:
+                break
             stop.wait(0.1)
     finally:
         stop.set()
-        worker.join(timeout=6)
+        # Wait for any current SQLite mutation. A sender still blocked in I/O will
+        # observe stop before applying its result, so queue ownership can be released.
+        with queue_access:
+            pass
+        worker.join(timeout=SENDER_JOIN_TIMEOUT_SECONDS)
     if failures:
         raise failures[0]
     if worker.is_alive():
