@@ -1,0 +1,42 @@
+name: ESP32 firmware
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  micropython:
+    name: MicroPython bytecode
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out platform
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out exact MicroPython release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: micropython/micropython
+          ref: 0fd6c573ea815774668bbb16b8e197c8822368b2 # v1.29.0
+          path: .firmware-tools/micropython
+          persist-credentials: false
+      - name: Build cross compiler
+        run: make -C .firmware-tools/micropython/mpy-cross -j2
+      - name: Compile the exact USB source files
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/tlm-mpy
+          for source in firmware/esp32_micropython/*.py; do
+            name="$(basename "$source" .py)"
+            .firmware-tools/micropython/mpy-cross/build/mpy-cross \
+              -march=xtensawin -o "/tmp/tlm-mpy/$name.mpy" "$source"
+          done
+          test "$(find /tmp/tlm-mpy -name '*.mpy' | wc -l)" -eq 6
+          echo 'Six firmware modules compiled; this does not claim hardware execution.'
