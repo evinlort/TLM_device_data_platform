@@ -8,3 +8,15 @@ dist/
 node_modules/
 test-results/
 supabase/.temp/
+.env
+.env.*
+*.env
+*.secret.json
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3.lock
+var/
