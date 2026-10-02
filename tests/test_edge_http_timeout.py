@@ -57,7 +57,11 @@ def test_default_timeout_is_fifteen_seconds_and_existing_constructor_still_works
     sender._opener = SimpleNamespace(open=open_request)
     assert sender.send(message.to_bytes()) == Delivery("ack")
     assert observed == [15.0]
-    assert inspect.signature(run_agent).parameters["drain_seconds"].default == 15.0
+    drain_default = inspect.signature(run_agent).parameters["drain_seconds"].default
+    assert drain_default == 16.0
+    assert drain_default >= (
+        edge_agent.DEFAULT_HTTP_TIMEOUT_SECONDS + edge_agent.SENDER_POLL_SECONDS
+    )
 
 
 @pytest.mark.parametrize(

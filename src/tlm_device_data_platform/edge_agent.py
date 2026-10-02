@@ -27,7 +27,9 @@ from .private_config import load_private_config
 
 _LOG = logging.getLogger(__name__)
 DEFAULT_HTTP_TIMEOUT_SECONDS = 15.0
-DEFAULT_DRAIN_SECONDS = 15.0
+SENDER_POLL_SECONDS = 0.1
+DEFAULT_DRAIN_GRACE_SECONDS = 1.0
+DEFAULT_DRAIN_SECONDS = DEFAULT_HTTP_TIMEOUT_SECONDS + DEFAULT_DRAIN_GRACE_SECONDS
 SENDER_JOIN_TIMEOUT_SECONDS = 6.0
 
 
@@ -222,7 +224,7 @@ def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
                 else:
                     backoff = 1
                     if result.action == "idle":
-                        stop.wait(0.1)
+                        stop.wait(SENDER_POLL_SECONDS)
         except Exception as error:
             failures.append(error)
             stop.set()
@@ -238,7 +240,7 @@ def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
                 break
             if not counts.get("pending"):
                 raise OutboxFull("Outbox full with no pending records; operator action required")
-            stop.wait(0.1)
+            stop.wait(SENDER_POLL_SECONDS)
         stream_id, sequence_no, deadline = uuid4(), 1, time.monotonic()
         while not stop.is_set() and (count == 0 or sequence_no <= count):
             if stop.wait(max(0, deadline - time.monotonic())):
@@ -258,7 +260,7 @@ def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
                 pending = outbox.oldest()
             if pending is None:
                 break
-            stop.wait(0.1)
+            stop.wait(SENDER_POLL_SECONDS)
     finally:
         stop.set()
         # Wait for any current SQLite mutation. A sender still blocked in I/O will

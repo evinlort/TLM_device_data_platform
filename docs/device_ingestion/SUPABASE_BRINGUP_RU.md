@@ -532,7 +532,7 @@ response = self._opener.open(request, timeout=5)
 | Механизм | Значение | Назначение |
 | --- | --- | --- |
 | Linux `HTTPSender` | `15.0 s` | Таймаут, передаваемый в `urllib` для HTTP-операций |
-| drain после окончания сбора | `15.0 s` | Ожидание ACK для уже поставленных в очередь сообщений |
+| drain после окончания сбора | `16.0 s` | HTTP timeout плюс `1.0 s` запаса на запуск/опрос worker |
 | bounded `worker.join` | `6.0 s` | Ожидание выхода sender worker после сигнала остановки |
 
 Существующий вызов `HTTPSender(url, token)` автоматически получает новый default.
