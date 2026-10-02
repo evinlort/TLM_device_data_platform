@@ -18,6 +18,7 @@ Linux sensor adapter / ESP32 MicroPython + HC-SR04
 
 - [Протокол v1 и границы пилота](docs/device_ingestion/PROTOCOL_V1.md).
 - [Установка, SQL, provisioning, API и Linux-агент](docs/device_ingestion/STAND_SETUP.md).
+- [Практический запуск с Supabase: миграции, TLS, provisioning, timeout и demo-запись](docs/device_ingestion/SUPABASE_BRINGUP_RU.md).
 - [ESP32: схема HC-SR04, USB, MicroPython и приёмка](firmware/esp32_micropython/README.md).
 - [ESP32: TDD и границы проверки](docs/device_ingestion/ESP32_IMPLEMENTATION.md).
 - [Ход реализации backend и Linux-агента](docs/device_ingestion/IMPLEMENTATION.md).
@@ -54,8 +55,13 @@ CI-fixtures. Они не используются как production telemetry co
 
 ## Что не заявлено готовым
 
+**Операторская проверка 02.10.2026:** программный путь `Linux demo → локальный TLM API
+→ удалённый Supabase → ACK` подтверждён. Порядок запуска, диагностика и локальная
+правка Linux HTTP timeout `5 → 15` описаны в [практическом руководстве](docs/device_ingestion/SUPABASE_BRINGUP_RU.md).
+Этот документационный commit не меняет Python-код; физическая ESP32 ещё не проверена.
+
 Код драйвера HC-SR04 добавлен, но аппаратная проверка датчика, GPIO, Wi-Fi/TLS
-на реальной ESP32 и hosted dev deployment ещё не выполнены. Host tests и
+на реальной ESP32 ещё не выполнена. Host tests и
 bytecode compilation не заменяют эту проверку. `demo_sensor:read` возвращает
 только явно тестовые показания. Нет dashboard, current_state, school/student
 isolation, управления оборудованием и гарантий production fleet scale.
