@@ -33,6 +33,10 @@ def load_private_config(path: Path, allowed_keys: set[str]) -> dict[str, str]:
 def write_private_config(path: Path, values: Mapping[str, str]) -> None:
     """Refuse overwrites; preserve recovery material if later DB commit is uncertain."""
     path = Path(path)
+    # Persist new ancestor entries too when mkdir creates a directory chain.
+    directories = [path.parent]
+    while not directories[-1].exists():
+        directories.append(directories[-1].parent)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
@@ -40,3 +44,9 @@ def write_private_config(path: Path, values: Mapping[str, str]) -> None:
         stream.write("\n")
         stream.flush()
         os.fsync(stream.fileno())
+    for directory in directories:
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
