@@ -147,7 +147,10 @@ class HTTPSender:
                 if status in (400, 409, 413, 422):
                     return Delivery("quarantine", f"http_{status}")
                 raise FatalDelivery("Credential, endpoint or redirect rejected; queue preserved")
-        except (URLError, HTTPException, TimeoutError, OSError):
+        except (URLError, HTTPException, TimeoutError, OSError) as error:
+            reason = error.reason if isinstance(error, URLError) else error
+            if isinstance(reason, ssl.SSLCertVerificationError):
+                raise FatalDelivery("TLS certificate verification failed; queue preserved") from error
             return Delivery("retry", "network_error")
 
 
@@ -200,8 +203,16 @@ def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
 
     worker = Thread(target=transmit, daemon=True)
     worker.start()
-    stream_id, sequence_no, deadline = uuid4(), 1, time.monotonic()
     try:
+        # A recovered full queue must free a durable slot before the first sample.
+        while not stop.is_set():
+            counts = outbox.counts()
+            if sum(counts.values()) < outbox.max_records:
+                break
+            if not counts.get("pending"):
+                raise OutboxFull("Outbox full with no pending records; operator action required")
+            stop.wait(0.1)
+        stream_id, sequence_no, deadline = uuid4(), 1, time.monotonic()
         while not stop.is_set() and (count == 0 or sequence_no <= count):
             if stop.wait(max(0, deadline - time.monotonic())):
                 break
