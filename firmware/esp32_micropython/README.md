@@ -138,7 +138,7 @@ ESP32-модификациям. Если плата не переходит в d
 из корня репозитория выполнить:
 
 ```bash
-.venv-device-tools/bin/mpremote connect /dev/ttyUSB0 fs cp firmware/esp32_micropython/tlm_core.py firmware/esp32_micropython/hcsr04.py firmware/esp32_micropython/tlm_http.py firmware/esp32_micropython/tlm_runtime.py :
+.venv-device-tools/bin/mpremote connect /dev/ttyUSB0 fs cp firmware/esp32_micropython/tlm_core.py firmware/esp32_micropython/hcsr04.py firmware/esp32_micropython/tlm_http.py firmware/esp32_micropython/tlm_runtime.py firmware/esp32_micropython/tlm_net_worker.py :
 .venv-device-tools/bin/mpremote connect /dev/ttyUSB0 fs cp firmware/esp32_micropython/config.secret.json :config.secret.json
 .venv-device-tools/bin/mpremote connect /dev/ttyUSB0 fs cp firmware/esp32_micropython/ca.pem :ca.pem
 .venv-device-tools/bin/mpremote connect /dev/ttyUSB0 fs cp firmware/esp32_micropython/main.py :main.py
@@ -150,7 +150,7 @@ ESP32-модификациям. Если плата не переходит в d
 `main.py` копируется последним. Эти команды могут останавливать текущую программу
 и выполнять soft reset. Перед обновлением остановить сбор и сохранить нужную
 очередь. Не копировать `.venv`, тесты, серверный пакет или полный репозиторий
-на ESP32. На плате используются только пять `.py`, приватная конфигурация и CA.
+на ESP32. На плате используются только шесть `.py`, приватная конфигурация и CA.
 Сторонние Python-пакеты на MicroPython устанавливать не требуется.
 
 Команды копирования подходят Bash и fish без активации venv. В REPL `Ctrl-C`
@@ -159,9 +159,16 @@ ESP32-модификациям. Если плата не переходит в d
 
 ## Очередь, расписание и ошибки
 
-Сбор и доставка — отдельные asyncio-задачи. Socket/TLS ожидание не должно
-блокировать coroutine сбора. Но MicroPython `getaddrinfo` и ntptime могут
-блокировать интерпретатор; flash I/O, GC и измерение ECHO также дают задержки.
+Сбор и доставка — отдельные asyncio-задачи. DNS и получение NTP-времени
+вынесены в один worker `tlm_net_worker.py`; очередь и установка RTC остаются
+в основном цикле. TCP использует полученный числовой IPv4, но TLS проверяет
+исходное имя API, которое также сохраняется в HTTP Host. Повтор не создаёт
+новый поток, пока прежний вызов не завершён; запоздалый результат отбрасывается.
+Ожидание задания ограничено 5 секундами, но это не прерывает native DNS:
+при зависании worker сбор продолжается до заполнения очереди, доставка ждёт.
+После `network_worker_busy` перезапустить плату перед повторным запуском программы.
+Для HTTP разрешены только канонические частные/loopback IPv4 без ведущих нулей.
+Flash I/O, GC, Wi-Fi и измерение ECHO всё ещё могут давать задержки.
 **10 секунд — номинальное расписание, не hard-real-time гарантия.** Пропущенные
 слоты не заполняются выдуманными показаниями. Для строгих временных требований
 потребуются другой способ сбора/буферизации и отдельная аппаратная проверка.
@@ -196,10 +203,14 @@ Host pytest выполняет ровно те исходники, которы�
 отдельно. Database job выполняет MCU encoder/queue/HTTP → API → restricted
 PostgreSQL → ACK. Это проверка ПО на компьютере, не запуск ESP32 Wi-Fi stack.
 
-Отдельный workflow `ESP32 firmware / MicroPython bytecode` компилирует все пять
+Отдельный workflow `ESP32 firmware / MicroPython bytecode` компилирует все шесть
 модулей через mpy-cross официального MicroPython 1.29.0, закреплённого SHA
 `0fd6c573ea815774668bbb16b8e197c8822368b2`. Компиляция не заменяет выполнение
 на плате и не подтверждает электрическое соединение.
+
+Модуль `_thread` в MicroPython экспериментальный: host-тесты и компиляция не
+подтверждают поведение потоков конкретной платы. Подробности реализации и
+проверок: [network worker](../../docs/device_ingestion/ESP32_NETWORK_REVIEW.md).
 
 После прошивки проверить:
 
@@ -208,7 +219,10 @@ PostgreSQL → ACK. Это проверка ПО на компьютере, не
 2. Отключение Wi-Fi и restart: старая очередь сохраняется, после восстановления
    сети доставляется без новых IDs и дублей. Ошибка сертификата не должна
    приводить к успешному ACK или отправке через отключённую проверку TLS.
-3. В dev-БД появляются реальные показания правильного устройства:
+3. Недоступные DNS и NTP не прекращают `sample_persisted`; после восстановления
+   сети накопленная очередь доставляется. Проверить на целевой плате с реальным
+   датчиком; измерения не подменять программными значениями.
+4. В dev-БД появляются реальные показания правильного устройства:
 
 ```sql
 SELECT message_id, stream_id, sequence_no, captured_at, received_at,

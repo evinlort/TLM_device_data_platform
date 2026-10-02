@@ -52,10 +52,47 @@ def validate_config(settings):
     return result
 
 
+def make_network_ready(settings, transport, wlan, clock, worker, rtc, log=print):
+    next_connect = clock.ticks_ms()
+    next_ntp = clock.ticks_ms()
+
+    async def ready():
+        nonlocal next_connect, next_ntp
+        now = clock.ticks_ms()
+        if not wlan.isconnected():
+            if clock.ticks_diff(now, next_connect) >= 0:
+                next_connect = clock.ticks_add(now, 15000)
+                try:
+                    wlan.disconnect()
+                    wlan.connect(settings['WIFI_SSID'], settings['WIFI_PASSWORD'])
+                except OSError:
+                    log('wifi_retry')
+            return False
+        # TLS needs plausible UTC. NTP is NOT promoted to trusted measurement time.
+        if transport.secure and clock.gmtime()[0] < 2024:
+            if clock.ticks_diff(now, next_ntp) >= 0:
+                next_ntp = clock.ticks_add(now, 60000)
+                if settings['NTP_HOST'] is not None:
+                    try:
+                        seconds = await worker.ntp_time(settings['NTP_HOST'])
+                        tm = clock.gmtime(seconds)
+                        if tm[0] >= 2024:
+                            rtc.datetime((tm[0], tm[1], tm[2], tm[6] + 1,
+                                          tm[3], tm[4], tm[5], 0))
+                    except (OSError, ValueError, OverflowError, asyncio.TimeoutError):
+                        log('clock_unavailable: queued data retained')
+            return clock.gmtime()[0] >= 2024
+        return True
+
+    return ready
+
+
 def start():
     import sys
     import time
     import network
+    import machine
+    from tlm_net_worker import NetworkWorker
     if sys.platform != 'esp32' or sys.implementation.version[:3] < (1, 29, 0):
         raise RuntimeError('Requires ESP32 MicroPython 1.29.0 or later')
     with open('config.secret.json') as stream:
@@ -69,40 +106,25 @@ def start():
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     wlan.config(reconnects=3)
-    next_connect = time.ticks_ms()
-    next_ntp = time.ticks_ms()
 
-    async def ready():
-        nonlocal next_connect, next_ntp
-        now = time.ticks_ms()
-        if not wlan.isconnected():
-            if time.ticks_diff(now, next_connect) >= 0:
-                next_connect = time.ticks_add(now, 15000)
-                try:
-                    wlan.disconnect()
-                    wlan.connect(settings['WIFI_SSID'], settings['WIFI_PASSWORD'])
-                except OSError:
-                    print('wifi_retry')
-            return False
-        # TLS needs plausible UTC. NTP is NOT promoted to trusted measurement time.
-        # MicroPython DNS and ntptime are blocking: see timing limitations in README.
-        if transport.secure and time.gmtime()[0] < 2024:
-            if time.ticks_diff(now, next_ntp) >= 0:
-                next_ntp = time.ticks_add(now, 60000)
-                if settings['NTP_HOST'] is not None:
-                    import ntptime
-                    ntptime.host = settings['NTP_HOST']
-                    ntptime.timeout = 2
-                    try:
-                        ntptime.settime()
-                    except OSError:
-                        print('clock_unavailable: queued data retained')
-            return time.gmtime()[0] >= 2024
-        return True
-
+    worker = NetworkWorker()
     try:
-        asyncio.run(run(queue, sensor, settings['TLM_DEVICE_ID'], transport, ready, time))
+        transport.resolver = worker.resolve_ipv4
+        ready = make_network_ready(settings, transport, wlan, time, worker, machine.RTC())
+
+        async def session():
+            try:
+                await run(queue, sensor, settings['TLM_DEVICE_ID'], transport, ready, time)
+            finally:
+                worker.close()
+                try:
+                    await worker.wait_closed()
+                except asyncio.TimeoutError:
+                    print('network_worker_busy: restart device before restarting program')
+
+        asyncio.run(session())
     finally:
+        worker.close()
         sensor.trigger.value(0)
 
 

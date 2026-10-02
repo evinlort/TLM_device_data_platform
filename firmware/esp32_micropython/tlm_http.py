@@ -7,12 +7,21 @@ MAX_RESPONSE = 2048
 _TOKEN_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
 
 
-def _private_ipv4(host):
+def _ipv4_octets(host):
+    if not isinstance(host, str):
+        return None
     pieces = host.split(".")
-    if len(pieces) != 4 or any(not p or any(c not in "0123456789" for c in p) for p in pieces):
-        return False
+    if len(pieces) != 4 or any(
+            not 1 <= len(p) <= 3 or (len(p) > 1 and p[0] == "0")
+            or any(c not in "0123456789" for c in p) for p in pieces):
+        return None
     numbers = [int(p) for p in pieces]
-    if any(n > 255 for n in numbers):
+    return numbers if all(n <= 255 for n in numbers) else None
+
+
+def _private_ipv4(host):
+    numbers = _ipv4_octets(host)
+    if numbers is None:
         return False
     return (numbers[0] in (10, 127) or numbers[:2] == [192, 168]
             or (numbers[0] == 172 and 16 <= numbers[1] <= 31))
@@ -123,13 +132,14 @@ async def _response(reader):
 
 class HTTPTransport:
     def __init__(self, url, token, ca_file=None, allow_insecure_http=False,
-                 ssl_module=ssl, connector=None):
+                 ssl_module=ssl, connector=None, resolver=None):
         self.secure, self.host, self.port, self.authority = _endpoint(url, allow_insecure_http)
         if (not isinstance(token, str) or not 43 <= len(token) <= 128
                 or any(c not in _TOKEN_CHARS for c in token)):
             raise ValueError("Invalid device token")
         self.token = token
         self.connector = connector or asyncio.open_connection
+        self.resolver = resolver
         self.context = None
         if self.secure:
             if not ca_file:
@@ -149,7 +159,14 @@ class HTTPTransport:
             options = {}
             if self.secure:
                 options = {"ssl": self.context, "server_hostname": self.host}
-            reader, writer = await self.connector(self.host, self.port, **options)
+            connect_host = self.host
+            if self.resolver is not None and _ipv4_octets(connect_host) is None:
+                connect_host = await self.resolver(self.host, self.port)
+                if _ipv4_octets(connect_host) is None:
+                    raise ValueError("Resolver must return canonical IPv4")
+            # On ESP32, the injected worker does DNS. A numeric address here
+            # avoids a second network lookup while preserving TLS SNI and Host.
+            reader, writer = await self.connector(connect_host, self.port, **options)
             headers = (
                 "POST /v1/telemetry HTTP/1.1\r\nHost: %s\r\n"
                 "Authorization: Bearer %s\r\nContent-Type: application/json\r\n"

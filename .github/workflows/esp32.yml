@@ -38,5 +38,5 @@ jobs:
             .firmware-tools/micropython/mpy-cross/build/mpy-cross \
               -march=xtensawin -o "/tmp/tlm-mpy/$name.mpy" "$source"
           done
-          test "$(find /tmp/tlm-mpy -name '*.mpy' | wc -l)" -eq 5
-          echo 'Five firmware modules compiled; this does not claim hardware execution.'
+          test "$(find /tmp/tlm-mpy -name '*.mpy' | wc -l)" -eq 6
+          echo 'Six firmware modules compiled; this does not claim hardware execution.'
