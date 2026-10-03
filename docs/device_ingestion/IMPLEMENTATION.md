@@ -132,6 +132,11 @@ runtime/device, запустить API и установить реальный 
 оборудованию, ротация token, retention, fleet-scale SLO и production deployment.
 Это отдельные требования, не скрытые свойства лабораторной реализации.
 
+**Последующая проверка 03.10.2026:** историческое утверждение выше об отсутствии
+физической платы относится к исходному этапу. Позднее ESP32-D0WD-V3 с HC-SR04
+передал реальные `distance_cm` через TLM API в Supabase. Подробности и границы:
+[ESP32_REAL_HARDWARE_BRINGUP_RU.md](ESP32_REAL_HARDWARE_BRINGUP_RU.md).
+
 ## Проверка следующей сессии
 
 Прочитать AGENTS.md и ingestion documents. Проверить фактические refs, текущий
