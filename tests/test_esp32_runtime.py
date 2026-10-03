@@ -81,6 +81,28 @@ def test_timeout_retains_exact_packet_across_restart(modules, tmp_path):
     assert core.FileOutbox(str(tmp_path / 'outbox'), DEVICE).peek()[1] == original
 
 
+@pytest.mark.parametrize('failure,category', [
+    (asyncio.TimeoutError('secret-token'), 'timeout'),
+    (OSError(-203, 'secret-token'), 'os_error -203'),
+    (EOFError('secret-token'), 'eof'),
+    (ValueError('secret-token'), 'invalid_response'),
+])
+def test_delivery_error_log_is_sanitized_and_packet_retained(modules, tmp_path, failure, category):
+    _, _, runtime = modules
+    q = make_queue(modules, tmp_path)
+    original = q.peek()[1]
+    logged = []
+
+    class Transport:
+        async def post(self, body):
+            raise failure
+
+    assert asyncio.run(runtime.send_once(q, Transport(), log=lambda *parts: logged.append(parts))) == ('retry', None)
+    assert logged == [('delivery_error', category)]
+    assert 'secret-token' not in str(logged)
+    assert q.peek()[1] == original
+
+
 @pytest.mark.parametrize('status,expected', [(409, 'quarantine'), (401, 'fatal'),
     (503, 'retry'), (302, 'fatal'), (429, 'retry')])
 def test_failure_actions_preserve_or_quarantine_without_ack(modules, tmp_path, status, expected):
@@ -166,9 +188,14 @@ def test_runtime_drains_tasks_after_worker_error_and_can_restart(modules, monkey
         entered = asyncio.Event()
         release_cleanup = asyncio.Event()
         finished = []
+        started = []
+        second_entered = asyncio.Event()
 
         async def worker(name):
+            started.append(name)
             entered.set()
+            if len(started) == 3:
+                second_entered.set()
             try:
                 await asyncio.Event().wait()
             finally:
@@ -195,7 +222,7 @@ def test_runtime_drains_tasks_after_worker_error_and_can_restart(modules, monkey
 
         monkeypatch.setattr(runtime, 'deliver', lambda *args: worker('deliver'))
         second = asyncio.create_task(runtime.run(queue, Sensor(), DEVICE, None, None, None))
-        await asyncio.sleep(0)
+        await asyncio.wait_for(second_entered.wait(), 1)
         second.cancel()
         with pytest.raises(asyncio.CancelledError):
             await second
