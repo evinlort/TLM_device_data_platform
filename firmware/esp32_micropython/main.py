@@ -5,7 +5,7 @@ import json
 from tlm_core import FileOutbox, canonical_uuid
 from tlm_http import _endpoint, _TOKEN_CHARS, HTTPTransport
 from hcsr04 import HCSR04
-from tlm_runtime import run
+from tlm_runtime import run, runtime_active
 
 
 def validate_config(settings):
@@ -88,6 +88,8 @@ def make_network_ready(settings, transport, wlan, clock, worker, rtc, log=print)
 
 
 def start():
+    if runtime_active():
+        raise RuntimeError('TLM runtime already running; reset device before manual restart')
     import sys
     import time
     import network

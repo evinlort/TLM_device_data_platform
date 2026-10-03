@@ -20,6 +20,7 @@ Linux sensor adapter / ESP32 MicroPython + HC-SR04
 - [Установка, SQL, provisioning, API и Linux-агент](docs/device_ingestion/STAND_SETUP.md).
 - [Практический запуск с Supabase: миграции, TLS, provisioning, timeout и demo-запись](docs/device_ingestion/SUPABASE_BRINGUP_RU.md).
 - [ESP32: схема HC-SR04, USB, MicroPython и приёмка](firmware/esp32_micropython/README.md).
+- [ESP32: полный запуск физического стенда до строки Supabase](docs/device_ingestion/ESP32_REAL_HARDWARE_BRINGUP_RU.md).
 - [ESP32: TDD и границы проверки](docs/device_ingestion/ESP32_IMPLEMENTATION.md).
 - [Ход реализации backend и Linux-агента](docs/device_ingestion/IMPLEMENTATION.md).
 - [SQL-миграция реальных устройств](supabase/migrations/20261002010000_add_device_ingestion.sql).
@@ -48,24 +49,27 @@ python3.11 -m venv .venv
 `TLM_TEST_ADMIN_DSN`. GitHub Actions поднимает её автоматически и выполняет
 настоящие HTTP → PostgreSQL tests под ограниченным LOGIN. Новые ESP32 host tests
 используют те же исходники, которые загружаются по USB. Отдельный workflow
-компилирует пять MicroPython-модулей закреплённым mpy-cross 1.29.0.
+компилирует шесть MicroPython-модулей закреплённым mpy-cross 1.29.0.
 
 Старые `simulation.py`, `telemetry_fixture.py` и `local_integration.py` остаются
 CI-fixtures. Они не используются как production telemetry contract.
 
-## Что не заявлено готовым
+## Проверено и ограничения
 
 **Операторская проверка 02.10.2026:** программный путь `Linux demo → локальный TLM API
 → удалённый Supabase → ACK` подтверждён. Порядок запуска и диагностика описаны в
 [практическом руководстве](docs/device_ingestion/SUPABASE_BRINGUP_RU.md). Найденное
 там исправление Linux HTTP timeout `5 → 15 s` теперь включено в исходники вместе
-с regression-тестами завершения агента. Физическая ESP32 ещё не проверена.
+с regression-тестами завершения агента. Это исторический результат 02.10.2026.
 
-Код драйвера HC-SR04 добавлен, но аппаратная проверка датчика, GPIO, Wi-Fi/TLS
-на реальной ESP32 ещё не выполнена. Host tests и
-bytecode compilation не заменяют эту проверку. `demo_sensor:read` возвращает
-только явно тестовые показания. Нет dashboard, current_state, school/student
-isolation, управления оборудованием и гарантий production fleet scale.
+**Физическая проверка 03.10.2026:** ESP32-D0WD-V3 с MicroPython 1.29.0 и
+HC-SR04 на GPIO26/GPIO27 через делитель передал настоящие расстояния по Wi-Fi
+2,4 ГГц в TLM API; свежие строки подтверждены в удалённой Supabase. Полный
+порядок и границы проверки — в [руководстве](docs/device_ingestion/ESP32_REAL_HARDWARE_BRINGUP_RU.md).
+`demo_sensor:read` по-прежнему возвращает только тестовые показания. Не
+проверены все варианты ESP32/HC-SR04, production HTTPS на плате, длительный
+ресурс flash, устойчивость к потере питания, долгий offline и fleet scale.
+Нет dashboard, current_state, school/student isolation и управления оборудованием.
 
 Секреты не коммитить. Required CI не подключается к remote Supabase и не требует
 физической платы. История исходной CI-подготовки сохранена в `docs/ci/`.

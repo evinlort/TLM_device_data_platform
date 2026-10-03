@@ -4,6 +4,12 @@ import asyncio
 from hcsr04 import SensorReadError
 from tlm_core import Cadence, make_message, response_action, retry_seconds, uuid4
 
+_running = False
+
+
+def runtime_active():
+    return _running
+
 
 def sample_once(queue, sensor, device_id, stream_id, sequence_no, new_id=uuid4):
     readings = sensor.read()
@@ -12,14 +18,25 @@ def sample_once(queue, sensor, device_id, stream_id, sequence_no, new_id=uuid4):
     return body
 
 
-async def send_once(queue, transport):
+async def send_once(queue, transport, log=None):
     item = queue.peek()
     if item is None:
         return "empty", None
     name, body = item
     try:
         status, headers, response = await transport.post(body)
-    except (OSError, EOFError, ValueError, asyncio.TimeoutError):
+    except (OSError, EOFError, ValueError, asyncio.TimeoutError) as error:
+        if log is not None:
+            if isinstance(error, asyncio.TimeoutError):
+                category = "timeout"
+            elif isinstance(error, EOFError):
+                category = "eof"
+            elif isinstance(error, OSError):
+                errno = error.args[0] if error.args and type(error.args[0]) is int else None
+                category = "os_error %d" % errno if errno is not None else "os_error"
+            else:
+                category = "invalid_response"
+            log("delivery_error", category)
         return "retry", None
     if status in (200, 201) and headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
         return "retry", None
@@ -56,7 +73,7 @@ async def deliver(queue, transport, network_ready, log=print):
         if not await network_ready():
             await asyncio.sleep(1)
             continue
-        action, retry_after = await send_once(queue, transport)
+        action, retry_after = await send_once(queue, transport, log)
         if action == "fatal":
             raise RuntimeError("Device authorization or endpoint needs operator attention")
         if action == "retry":
@@ -72,12 +89,26 @@ async def deliver(queue, transport, network_ready, log=print):
 
 
 async def run(queue, sensor, device_id, transport, network_ready, clock, log=print):
+    global _running
+    if _running:
+        raise RuntimeError("TLM runtime already running; reset device before manual restart")
+    _running = True
+    tasks = []
     # The new stream affects only newly sampled packets, never the persisted queue.
-    stream_id = uuid4()
-    tasks = [asyncio.create_task(collect(queue, sensor, device_id, stream_id, clock, log)),
-             asyncio.create_task(deliver(queue, transport, network_ready, log))]
     try:
+        stream_id = uuid4()
+        tasks.append(asyncio.create_task(collect(queue, sensor, device_id, stream_id, clock, log)))
+        tasks.append(asyncio.create_task(deliver(queue, transport, network_ready, log)))
         await asyncio.gather(*tasks)
     finally:
         for task in tasks:
             task.cancel()
+        try:
+            for task in tasks:
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    # The primary gather result remains the run() outcome.
+                    pass
+        finally:
+            _running = False

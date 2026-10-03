@@ -34,6 +34,12 @@ def test_defaults_are_safe_and_ten_second_cadence_is_not_overridden(boot):
     assert result['CA_FILE'] == 'ca.pem'
 
 
+def test_second_start_rejects_before_touching_hardware(boot, monkeypatch):
+    monkeypatch.setattr(boot, 'runtime_active', lambda: True, raising=False)
+    with pytest.raises(RuntimeError, match='already running'):
+        boot.start()
+
+
 @pytest.mark.parametrize('key,value', [('ALLOW_INSECURE_HTTP', 'false'),
     ('TLM_DATABASE_DSN', 'never-on-device'), ('TRIG_PIN', 6), ('ECHO_PIN', 26),
     ('TRIG_PIN', 26.0), ('OUTBOX_CAPACITY', 0), ('OUTBOX_CAPACITY', True),
