@@ -122,3 +122,84 @@ def test_slow_transport_does_not_block_sampling_coroutine(modules, tmp_path):
         release.set()
         assert await task == ('retry', None)
     asyncio.run(scenario())
+
+
+def test_second_runtime_is_rejected_without_duplicate_collection(modules, monkeypatch, tmp_path):
+    core, _, runtime = modules
+    queue = core.FileOutbox(str(tmp_path / 'outbox'), DEVICE)
+
+    async def scenario():
+        entered = asyncio.Event()
+        samples = []
+
+        async def collect(*args):
+            samples.append('collector_started')
+            entered.set()
+            await asyncio.Event().wait()
+
+        async def deliver(*args):
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(runtime, 'collect', collect)
+        monkeypatch.setattr(runtime, 'deliver', deliver)
+        first = asyncio.create_task(runtime.run(queue, Sensor(), DEVICE, None, None, None))
+        await entered.wait()
+        with pytest.raises(RuntimeError, match='already running'):
+            await asyncio.wait_for(runtime.run(queue, Sensor(), DEVICE, None, None, None), 0.1)
+        assert samples == ['collector_started']
+        assert not first.done()
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        assert queue.peek() is None
+
+    asyncio.run(scenario())
+
+
+def test_runtime_drains_tasks_after_worker_error_and_can_restart(modules, monkeypatch, tmp_path):
+    core, _, runtime = modules
+    queue = core.FileOutbox(str(tmp_path / 'outbox'), DEVICE)
+    runtime.sample_once(queue, Sensor(), DEVICE, STREAM, 1, lambda: MESSAGE)
+    original = queue.peek()[1]
+
+    async def scenario():
+        entered = asyncio.Event()
+        release_cleanup = asyncio.Event()
+        finished = []
+
+        async def worker(name):
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                await release_cleanup.wait()
+                finished.append(name)
+
+        async def fail_delivery(*args):
+            await entered.wait()
+            raise RuntimeError('delivery failed')
+
+        monkeypatch.setattr(runtime, 'collect', lambda *args: worker('collect'))
+        monkeypatch.setattr(runtime, 'deliver', fail_delivery)
+        first = asyncio.create_task(runtime.run(queue, Sensor(), DEVICE, None, None, None))
+        await entered.wait()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert not first.done()
+        assert finished == []
+        release_cleanup.set()
+        with pytest.raises(RuntimeError, match='delivery failed'):
+            await first
+        assert finished == ['collect']
+        assert queue.peek()[1] == original
+
+        monkeypatch.setattr(runtime, 'deliver', lambda *args: worker('deliver'))
+        second = asyncio.create_task(runtime.run(queue, Sensor(), DEVICE, None, None, None))
+        await asyncio.sleep(0)
+        second.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await second
+        assert sorted(finished) == ['collect', 'collect', 'deliver']
+        assert queue.peek()[1] == original
+
+    asyncio.run(scenario())
