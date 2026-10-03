@@ -116,3 +116,39 @@ HC-SR04 на GPIO26/GPIO27, Wi-Fi 2,4 ГГц, TLM API и свежие строк
 `tlm_runtime.py`. [Операторское руководство](ESP32_REAL_HARDWARE_BRINGUP_RU.md)
 содержит команды, доказательства и ограничения; HTTPS production и длительная
 эксплуатация не были частью этого испытания.
+
+### Обоснование исправления и проверки
+
+В исходном `tlm_runtime.run()` не было проверки занятого runtime, а `finally`
+только вызывал `task.cancel()` без ожидания завершения задач. Два host-теста
+сначала дали RED: второй запуск не отклонялся, а ошибка delivery позволяла
+`run()` выйти до завершения collection cleanup. Дополнительный boot-тест дал
+RED до импорта hardware modules; четыре диагностических случая дали RED до
+добавления ограниченных категорий ошибок. После минимального исправления все
+ESP32 host tests прошли: `141 passed`.
+
+На commit `16d796e7159ba0f9a20145134e5551deb727d4e5` локально выполнены:
+
+```text
+.venv/bin/python -m pytest -m 'not database' -q
+256 passed, 22 deselected
+```
+
+Официальный MicroPython 1.29.0 commit
+`0fd6c573ea815774668bbb16b8e197c8822368b2` собран локально; все шесть
+исходных `.py` скомпилированы `mpy-cross -march=xtensawin`. Локальные DB-тесты
+не запускались: `TLM_TEST_ADMIN_DSN` отсутствовал, Docker daemon недоступен.
+На **том же точном commit** GitHub Actions CI run
+[#71](https://github.com/evinlort/TLM_device_data_platform/actions/runs/37147349807)
+успешно выполнил `278 pytest passed` и `34 pgTAP` на одноразовой Supabase;
+ESP32 firmware run
+[#12](https://github.com/evinlort/TLM_device_data_platform/actions/runs/37147349826)
+успешно скомпилировал шесть модулей. Это результаты указанного commit, не
+автоматическое утверждение о будущих HEAD и не новая аппаратная прошивка.
+
+Подтверждённые операторские причины: неверная разводка делителя, попытка
+использовать 5 GHz, закрытый входящий порт UFW и несколько запущенных runtime.
+Нельзя доказать по журналу, что каждый `MemoryError`/`OSError(-203)` вызван
+именно перекрытием runtime. Экспериментальный HTTP timeout 20 s, дополнительная
+пауза 8 s и GC-логи не подтвердили причину и в прошивку не перенесены.
+HTTP framing/TLS и правило точного duplicate ACK не изменены.
