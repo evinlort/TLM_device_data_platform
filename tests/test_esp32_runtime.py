@@ -304,6 +304,92 @@ def test_second_runtime_is_rejected_and_guard_clears_after_cancel(modules, tmp_p
     asyncio.run(scenario())
 
 
+def test_ack_after_ticks_wrap_allows_next_sample(modules, monkeypatch, tmp_path):
+    _, _, runtime = modules
+    queue = make_queue(modules, tmp_path)
+    sensor_reads = []
+    modulus = 1 << 30
+    half_period = modulus // 2
+
+    class WrappingClock:
+        now = 0
+
+        def ticks_ms(self):
+            return self.now
+
+        def ticks_add(self, value, delta):
+            return (value + delta) % modulus
+
+        def ticks_diff(self, left, right):
+            return ((left - right + half_period) % modulus) - half_period
+
+    clock = WrappingClock()
+
+    async def scenario():
+        second_post = asyncio.Event()
+
+        class AckAfterLongWait:
+            calls = 0
+
+            async def post(self, body):
+                self.calls += 1
+                message = json.loads(body)
+                if self.calls == 1:
+                    clock.now = half_period + 1
+                    ack = {'status': 'stored', 'device_id': DEVICE,
+                           'message_id': message['message_id'],
+                           'received_at': '2026-10-04T00:00:00Z'}
+                    return 201, {'content-type': 'application/json'}, json.dumps(ack).encode()
+                second_post.set()
+                await asyncio.Event().wait()
+
+        class CountingSensor:
+            def read(self):
+                sensor_reads.append(True)
+                return {'distance_cm': 43.0}
+
+        async def ready():
+            return True
+
+        monkeypatch.setattr(runtime, 'uuid4', lambda: STREAM)
+        task = asyncio.create_task(runtime.run(
+            queue, CountingSensor(), DEVICE, AckAfterLongWait(), ready, clock,
+            log=lambda *parts: None,
+        ))
+        await asyncio.wait_for(second_post.wait(), 0.5)
+        assert sensor_reads == [True]
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+
+
+def test_initialization_failure_clears_runtime_guard(modules, monkeypatch, tmp_path):
+    _, _, runtime = modules
+    queue = make_queue(modules, tmp_path)
+
+    def fail_uuid():
+        raise RuntimeError('uuid unavailable')
+
+    monkeypatch.setattr(runtime, 'uuid4', fail_uuid)
+    clock = type('Clock', (), {
+        'ticks_ms': lambda self: 0,
+        'ticks_add': lambda self, value, delta: value + delta,
+        'ticks_diff': lambda self, left, right: left - right,
+    })()
+
+    async def ready():
+        return True
+
+    with pytest.raises(RuntimeError, match='uuid unavailable'):
+        asyncio.run(runtime.run(
+            queue, Sensor(), DEVICE, object(), ready, clock,
+            log=lambda *parts: None,
+        ))
+    assert not runtime.runtime_active()
+
+
 def test_fatal_delivery_preserves_message_and_allows_restart(modules, tmp_path):
     _, _, runtime = modules
     queue = make_queue(modules, tmp_path)

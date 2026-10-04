@@ -53,12 +53,12 @@ async def run(queue, sensor, device_id, transport, network_ready, clock, log=pri
     if _running:
         raise RuntimeError("TLM runtime already running; reset device before manual restart")
     _running = True
-    # The new stream affects only newly sampled packets, never the persisted queue.
-    stream_id = uuid4()
-    cadence = Cadence(clock.ticks_ms(), clock.ticks_add, clock.ticks_diff)
-    sequence = 1
-    attempt = 0
     try:
+        # The new stream affects only newly sampled packets, never the persisted queue.
+        stream_id = uuid4()
+        cadence = Cadence(clock.ticks_ms(), clock.ticks_add, clock.ticks_diff)
+        sequence = 1
+        attempt = 0
         while True:
             # A persisted message always wins. No later sensor read occurs until
             # it receives a valid ACK or is explicitly quarantined.
@@ -91,6 +91,11 @@ async def run(queue, sensor, device_id, transport, network_ready, clock, log=pri
                 attempt = 0
                 if action != "empty":
                     log("delivery_" + action, queue.count())
+                if action in ("ack", "quarantine") and not queue.has_pending():
+                    # ticks_diff is defined only within half of its wrap period.
+                    # Rebase after a potentially long backlog wait so the next
+                    # measurement is due immediately and unambiguously.
+                    cadence = Cadence(clock.ticks_ms(), clock.ticks_add, clock.ticks_diff)
                 await asyncio.sleep(0.05)
     finally:
         _running = False
