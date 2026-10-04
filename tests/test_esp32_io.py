@@ -158,3 +158,49 @@ def test_tls_requires_ca_and_verification(tmp_path):
                                      ca_file='root.pem', ssl_module=TLS)
     assert transport.context.verify_mode == TLS.CERT_REQUIRED
     assert seen['cafile'] == 'root.pem'
+
+
+def test_transport_timeout_closes_writer_without_leaving_request_task(monkeypatch):
+    module = load('tlm_http')
+    real_wait_for = asyncio.wait_for
+    closed, waited = [], []
+
+    class Reader:
+        async def read(self, count):
+            await asyncio.Event().wait()
+
+    class Writer:
+        def write(self, data):
+            pass
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            closed.append(True)
+
+        async def wait_closed(self):
+            waited.append(True)
+
+    async def connector(*args, **kwargs):
+        return Reader(), Writer()
+
+    async def bounded(awaitable, timeout):
+        if timeout == 10:
+            timeout = 0.01
+        return await real_wait_for(awaitable, timeout)
+
+    monkeypatch.setattr(module.asyncio, 'wait_for', bounded)
+
+    async def scenario():
+        transport = module.HTTPTransport(
+            'http://127.0.0.1/v1/telemetry', 'x' * 43,
+            allow_insecure_http=True, connector=connector,
+        )
+        with pytest.raises(asyncio.TimeoutError):
+            await transport.post(b'{}')
+        assert closed == [True]
+        assert waited == [True]
+        assert asyncio.all_tasks() == {asyncio.current_task()}
+
+    asyncio.run(scenario())

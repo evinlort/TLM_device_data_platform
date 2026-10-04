@@ -67,7 +67,7 @@ async def collect(queue, sensor, device_id, stream_id, clock, log=print):
 async def deliver(queue, transport, network_ready, log=print):
     attempt = 0
     while True:
-        if queue.peek() is None:
+        if not queue.has_pending():
             await asyncio.sleep(0.2)
             continue
         if not await network_ready():

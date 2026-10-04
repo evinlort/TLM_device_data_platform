@@ -91,7 +91,8 @@ def test_large_legacy_outbox_queue_full_does_not_rescan_directory(
     with pytest.raises(core.QueueFull):
         queue.enqueue(packet(core, 513))
     assert queue.peek() == records[1]
-    assert len(tuple(directory.glob("*.msg"))) == 512
+    assert (directory / records[512][0]).exists()
+    assert not (directory / "0000000000000513.msg").exists()
 
 
 def test_large_legacy_outbox_recovers_interrupted_write_without_listdir(
@@ -140,3 +141,29 @@ def test_unexpected_file_still_fails_closed_during_streaming_scan(core, tmp_path
     with pytest.raises(core.QueueCorrupt, match="Unexpected queue file"):
         core.FileOutbox(str(directory), DEVICE, capacity=512)
     assert unexpected.read_text() == "preserve me"
+
+
+def test_duplicate_interrupted_write_is_removed_only_when_bytes_match(core, tmp_path):
+    directory, records = legacy_outbox(core, tmp_path, 400)
+    name, body = records[400]
+    staged = directory / name.replace(".msg", ".tmp")
+    staged.write_bytes(core._digest(body) + b"\n" + body)
+
+    queue = core.FileOutbox(str(directory), DEVICE, capacity=401)
+
+    assert not staged.exists()
+    assert queue.peek() == records[1]
+    assert (directory / name).exists()
+
+
+def test_ambiguous_interrupted_write_fails_closed_and_preserves_both(core, tmp_path):
+    directory, records = legacy_outbox(core, tmp_path, 400)
+    name, _ = records[400]
+    other = packet(core, 401)
+    staged = directory / name.replace(".msg", ".tmp")
+    staged.write_bytes(core._digest(other) + b"\n" + other)
+
+    with pytest.raises(core.QueueCorrupt, match="Ambiguous interrupted write"):
+        core.FileOutbox(str(directory), DEVICE, capacity=402)
+    assert staged.exists()
+    assert (directory / name).exists()
