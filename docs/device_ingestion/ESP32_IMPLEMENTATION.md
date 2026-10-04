@@ -196,11 +196,10 @@ Disposable Supabase suite локально не выполнялся: Docker soc
 390 включал `owner`. После обновления новые HC-SR04 samples продолжали сохраняться,
 а десятки сообщений получили `delivery_ack` без `MemoryError`. Финальный firmware
 логирует total count: при работающем API и продолжающемся сборе он уменьшился
-с 457 до 450, затем runtime был оставлен работающим. Два zero-byte staging-файла,
-созданных принудительными `mpremote` interruptions во время диагностики, не были
-удалены: оператор сохранил их как `.bad`, поэтому они продолжают учитываться в
-capacity и total count. Исходные pending bytes не удалялись и device identity не
-менялась.
+с 457 до 450 во время стабильного окна. Zero-byte staging-файлы, созданные
+принудительными `mpremote` interruptions во время диагностики, не удалялись:
+оператор сохранил их как `.bad`, поэтому они продолжают учитываться в capacity
+и total count. Исходные pending bytes не удалялись и device identity не менялась.
 
 LittleFS оказался почти заполнен: overwrite source modules получил `ENOSPC`.
 Повреждённый partial `tlm_core.py` и старый `tlm_runtime.py` были заменены только
@@ -217,3 +216,13 @@ failure для pooler hostname. Поэтому новые Supabase rows и dupli
 повторно подтвердить после восстановления DNS. Firmware timeout при этом сохранял
 точные сообщения и sampling продолжался; это внешний remaining risk, а не повод
 менять token, DSN, CA или очищать outbox.
+
+После этой проверки общий host DNS outage продолжился, API снова перестал писать
+в PostgreSQL, и total начал расти. Для защиты почти заполненного LittleFS runtime
+был остановлен в REPL без reset. Эта остановка также попала в начало flash write;
+третий нулевой `.tmp` был сохранён как `.bad`. Финальное проверенное состояние
+платы: `458 .msg`, `3 .bad`, `0 .tmp`; плата оставлена остановленной до
+восстановления DNS/API→Supabase. Значение 450 выше остаётся фактическим
+подтверждением net drain в стабильном окне, а 458 — более поздним состоянием
+после внешнего outage. Не делать reset до восстановления backend path: autostart
+снова начнёт sampling при минимальном свободном месте.
