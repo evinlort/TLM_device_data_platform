@@ -181,10 +181,10 @@ class Clock:
 
 
 @pytest.mark.parametrize('phase', ['dns', 'ntp'])
-def test_actual_collector_persists_while_network_preparation_is_blocked(modules, monkeypatch, tmp_path, phase):
+def test_blocked_network_preparation_keeps_exactly_one_persisted_message(modules, monkeypatch, tmp_path, phase):
     net = load('tlm_net_worker', monkeypatch)
     core, runtime, http, boot = [modules[n] for n in ('tlm_core', 'tlm_runtime', 'tlm_http', 'main')]
-    # Accelerate only the cadence; use the actual collect/run and real FileOutbox.
+    # Accelerate cadence; a pending message must gate every later sensor read.
     monkeypatch.setattr(core, 'PERIOD_MS', 20)
     started, release = threading.Event(), threading.Event()
     worker_ids, rtc_calls, connects = [], [], []
@@ -224,9 +224,10 @@ def test_actual_collector_persists_while_network_preparation_is_blocked(modules,
         try:
             await until(started.is_set)
             original = queue.peek()
-            await until(lambda: len(list((tmp_path / 'outbox').glob('*.msg'))) >= 4)
+            await asyncio.sleep(0.1)
             assert not release.is_set()
             assert queue.peek() == original
+            assert len(list((tmp_path / 'outbox').glob('*.msg'))) == 1
             assert connects == [] and rtc_calls == []
             assert worker_ids and all(value != main_thread for value in worker_ids)
             release.set()
@@ -234,16 +235,14 @@ def test_actual_collector_persists_while_network_preparation_is_blocked(modules,
             assert connects[0] == ('127.0.0.1', 'api.example.invalid')
             assert bool(rtc_calls) == (phase == 'ntp')
             assert queue.peek() == original
-            packets = [json.loads(queue._read(p.name)) for p in sorted((tmp_path / 'outbox').glob('*.msg'))]
-            assert [p['sequence_no'] for p in packets] == list(range(1, len(packets) + 1))
-            assert all(p['captured_at'] is None for p in packets)
+            packet = json.loads(queue.peek()[1])
+            assert packet['sequence_no'] == 1
+            assert packet['captured_at'] is None
         finally:
             release.set()
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
-            # Allow cancellation of the child tasks in the existing runtime.
-            await asyncio.sleep(0)
             worker.close()
             await worker.wait_closed()
     asyncio.run(scenario())

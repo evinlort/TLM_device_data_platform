@@ -1,4 +1,4 @@
-"""Runtime TDD: queue first, exact replay, ACK and independent sampling."""
+"""Runtime TDD: one persisted message is delivered before the next sample."""
 import asyncio
 import importlib.util
 import json
@@ -87,11 +87,16 @@ def test_delivery_ack_log_includes_remaining_outbox_count(modules, tmp_path):
         async def ready():
             return True
 
-        task = asyncio.create_task(
-            runtime.deliver(q, Transport(), ready,
-                            log=lambda *parts: logged.append(parts))
-        )
-        while q.has_pending():
+        clock = type('Clock', (), {
+            'ticks_ms': lambda self: 0,
+            'ticks_add': lambda self, value, delta: value + delta,
+            'ticks_diff': lambda self, left, right: -1,
+        })()
+        task = asyncio.create_task(runtime.run(
+            q, Sensor(), DEVICE, Transport(), ready, clock,
+            log=lambda *parts: logged.append(parts),
+        ))
+        while not logged:
             await asyncio.sleep(0)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -158,106 +163,190 @@ def test_new_boot_stream_does_not_rewrite_old_queue(modules, tmp_path):
     assert json.loads(q.peek()[1])['stream_id'] == MESSAGE
 
 
-def test_slow_transport_does_not_block_sampling_coroutine(modules, tmp_path):
-    core, _, runtime = modules
-    q = make_queue(modules, tmp_path)
+def test_pending_retry_blocks_new_sensor_reads(modules, monkeypatch, tmp_path):
+    _, _, runtime = modules
+    queue = make_queue(modules, tmp_path)
+    original = queue.peek()[1]
+    sensor_reads = []
+
+    class CountingSensor:
+        def read(self):
+            sensor_reads.append(True)
+            return {'distance_cm': 43.0}
+
     async def scenario():
-        entered, release = asyncio.Event(), asyncio.Event()
-        class Slow:
+        attempts = []
+
+        class Offline:
             async def post(self, body):
-                entered.set()
-                await release.wait()
+                attempts.append(body)
                 raise OSError('temporary')
-        task = asyncio.create_task(runtime.send_once(q, Slow()))
-        await entered.wait()
-        runtime.sample_once(q, Sensor(), DEVICE, STREAM, 2, lambda: STREAM)
-        assert len(list((tmp_path / 'outbox').glob('*.msg'))) == 2
-        release.set()
-        assert await task == ('retry', None)
+
+        async def ready():
+            return True
+
+        monkeypatch.setattr(runtime, 'retry_seconds', lambda *args: 0)
+        clock = type('Clock', (), {
+            'ticks_ms': lambda self: 0,
+            'ticks_add': lambda self, value, delta: value + delta,
+            'ticks_diff': lambda self, left, right: left - right,
+        })()
+        task = asyncio.create_task(runtime.run(
+            queue, CountingSensor(), DEVICE, Offline(), ready, clock,
+            log=lambda *parts: None,
+        ))
+        while len(attempts) < 3:
+            await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert attempts == [original, original, original]
+        assert sensor_reads == []
+        assert queue.count() == 1
+
     asyncio.run(scenario())
 
 
-def test_second_runtime_is_rejected_without_duplicate_collection(modules, monkeypatch, tmp_path):
-    core, _, runtime = modules
-    queue = core.FileOutbox(str(tmp_path / 'outbox'), DEVICE)
+def test_ack_allows_exactly_one_next_sample_before_next_request(modules, monkeypatch, tmp_path):
+    _, _, runtime = modules
+    queue = make_queue(modules, tmp_path)
+    sensor_reads = []
+
+    async def scenario():
+        second_post = asyncio.Event()
+        posts = []
+
+        class OneAckThenBlock:
+            async def post(self, body):
+                posts.append(body)
+                message = json.loads(body)
+                if len(posts) == 1:
+                    ack = {'status': 'stored', 'device_id': DEVICE,
+                           'message_id': message['message_id'],
+                           'received_at': '2026-10-04T00:00:00Z'}
+                    return 201, {'content-type': 'application/json'}, json.dumps(ack).encode()
+                second_post.set()
+                await asyncio.Event().wait()
+
+        class CountingSensor:
+            def read(self):
+                sensor_reads.append(True)
+                return {'distance_cm': 43.0}
+
+        async def ready():
+            return True
+
+        monkeypatch.setattr(runtime, 'uuid4', lambda: STREAM)
+        clock = type('Clock', (), {
+            'ticks_ms': lambda self: 0,
+            'ticks_add': lambda self, value, delta: value + delta,
+            'ticks_diff': lambda self, left, right: left - right,
+        })()
+        task = asyncio.create_task(runtime.run(
+            queue, CountingSensor(), DEVICE, OneAckThenBlock(), ready, clock,
+            log=lambda *parts: None,
+        ))
+        await second_post.wait()
+        assert len(posts) == 2
+        assert sensor_reads == [True]
+        assert json.loads(posts[1])['sequence_no'] == 1
+        assert queue.count() == 1
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+
+
+def test_second_runtime_is_rejected_and_guard_clears_after_cancel(modules, tmp_path):
+    _, _, runtime = modules
+    queue = make_queue(modules, tmp_path)
 
     async def scenario():
         entered = asyncio.Event()
-        samples = []
 
-        async def collect(*args):
-            samples.append('collector_started')
-            entered.set()
-            await asyncio.Event().wait()
+        class Blocked:
+            async def post(self, body):
+                entered.set()
+                await asyncio.Event().wait()
 
-        async def deliver(*args):
-            await asyncio.Event().wait()
+        async def ready():
+            return True
 
-        monkeypatch.setattr(runtime, 'collect', collect)
-        monkeypatch.setattr(runtime, 'deliver', deliver)
-        first = asyncio.create_task(runtime.run(queue, Sensor(), DEVICE, None, None, None))
+        clock = type('Clock', (), {
+            'ticks_ms': lambda self: 0,
+            'ticks_add': lambda self, value, delta: value + delta,
+            'ticks_diff': lambda self, left, right: left - right,
+        })()
+        first = asyncio.create_task(runtime.run(
+            queue, Sensor(), DEVICE, Blocked(), ready, clock,
+            log=lambda *parts: None,
+        ))
         await entered.wait()
         with pytest.raises(RuntimeError, match='already running'):
-            await asyncio.wait_for(runtime.run(queue, Sensor(), DEVICE, None, None, None), 0.1)
-        assert samples == ['collector_started']
-        assert not first.done()
+            await runtime.run(queue, Sensor(), DEVICE, Blocked(), ready, clock)
         first.cancel()
         with pytest.raises(asyncio.CancelledError):
             await first
-        assert queue.peek() is None
+        assert not runtime.runtime_active()
+
+        entered.clear()
+        second = asyncio.create_task(runtime.run(
+            queue, Sensor(), DEVICE, Blocked(), ready, clock,
+            log=lambda *parts: None,
+        ))
+        await entered.wait()
+        second.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await second
+        assert not runtime.runtime_active()
 
     asyncio.run(scenario())
 
 
-def test_runtime_drains_tasks_after_worker_error_and_can_restart(modules, monkeypatch, tmp_path):
-    core, _, runtime = modules
-    queue = core.FileOutbox(str(tmp_path / 'outbox'), DEVICE)
-    runtime.sample_once(queue, Sensor(), DEVICE, STREAM, 1, lambda: MESSAGE)
+def test_fatal_delivery_preserves_message_and_allows_restart(modules, tmp_path):
+    _, _, runtime = modules
+    queue = make_queue(modules, tmp_path)
     original = queue.peek()[1]
 
+    class Fatal:
+        async def post(self, body):
+            return 401, {}, b'{}'
+
+    async def ready():
+        return True
+
+    clock = type('Clock', (), {
+        'ticks_ms': lambda self: 0,
+        'ticks_add': lambda self, value, delta: value + delta,
+        'ticks_diff': lambda self, left, right: left - right,
+    })()
+
     async def scenario():
-        entered = asyncio.Event()
-        release_cleanup = asyncio.Event()
-        finished = []
-        started = []
-        second_entered = asyncio.Event()
-
-        async def worker(name):
-            started.append(name)
-            entered.set()
-            if len(started) == 3:
-                second_entered.set()
-            try:
-                await asyncio.Event().wait()
-            finally:
-                await release_cleanup.wait()
-                finished.append(name)
-
-        async def fail_delivery(*args):
-            await entered.wait()
-            raise RuntimeError('delivery failed')
-
-        monkeypatch.setattr(runtime, 'collect', lambda *args: worker('collect'))
-        monkeypatch.setattr(runtime, 'deliver', fail_delivery)
-        first = asyncio.create_task(runtime.run(queue, Sensor(), DEVICE, None, None, None))
-        await entered.wait()
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        assert not first.done()
-        assert finished == []
-        release_cleanup.set()
-        with pytest.raises(RuntimeError, match='delivery failed'):
-            await first
-        assert finished == ['collect']
+        with pytest.raises(RuntimeError, match='operator attention'):
+            await runtime.run(
+                queue, Sensor(), DEVICE, Fatal(), ready, clock,
+                log=lambda *parts: None,
+            )
+        assert not runtime.runtime_active()
         assert queue.peek()[1] == original
 
-        monkeypatch.setattr(runtime, 'deliver', lambda *args: worker('deliver'))
-        second = asyncio.create_task(runtime.run(queue, Sensor(), DEVICE, None, None, None))
-        await asyncio.wait_for(second_entered.wait(), 1)
+        entered = asyncio.Event()
+
+        class Blocked:
+            async def post(self, body):
+                entered.set()
+                await asyncio.Event().wait()
+
+        second = asyncio.create_task(runtime.run(
+            queue, Sensor(), DEVICE, Blocked(), ready, clock,
+            log=lambda *parts: None,
+        ))
+        await entered.wait()
         second.cancel()
         with pytest.raises(asyncio.CancelledError):
             await second
-        assert sorted(finished) == ['collect', 'collect', 'deliver']
+        assert not runtime.runtime_active()
         assert queue.peek()[1] == original
 
     asyncio.run(scenario())
