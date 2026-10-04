@@ -48,10 +48,11 @@ HEAD `3eb5ce365e8db4ac2ab024f5bbd23ba7c2e91b67` ветки `feat/device-ingestio
 проверкой CA/hostname для HTTPS, ограничением ответа и проверкой полного
 Content-Length/chunked/EOF framing. Redirect не переносит token на другой host.
 
-`tlm_runtime.py` разделяет coroutine сбора и доставки. ACK удаляет только точные
-подтверждённые bytes. Retry сохраняет их; постоянные ошибки пакета ведут в
-quarantine; ошибки доступа требуют оператора. Новые измерения после restart
-получают новый stream, старые файлы сохраняют прежний.
+`tlm_runtime.py` использует один последовательный loop: persisted message
+повторяется до ACK и полностью блокирует следующий sensor read. ACK удаляет
+только точные подтверждённые bytes. Retry сохраняет их; постоянные ошибки пакета
+ведут в quarantine; ошибки доступа требуют оператора. Новые измерения после
+restart получают новый stream, старые файлы сохраняют прежний.
 
 `main.py` загружает приватный config, проверяет GPIO/UUID/token/endpoint и
 управляет Wi-Fi. Требуется подходящий ESP32 build MicroPython 1.29.0. Linux
@@ -152,3 +153,124 @@ ESP32 firmware run
 именно перекрытием runtime. Экспериментальный HTTP timeout 20 s, дополнительная
 пауза 8 s и GC-логи не подтвердили причину и в прошивку не перенесены.
 HTTP framing/TLS и правило точного duplicate ACK не изменены.
+
+## Большая flash-очередь — 04.10.2026
+
+На физическом стенде после первой успешной доставки накопились сотни файлов.
+Аппаратный замер показал, что прежние `os.listdir()` и `sorted()` временно
+занимали около 35 KiB при 390 directory entries. Старый `enqueue()` дополнительно
+строил список числовых индексов, а delivery loop дважды вызывал `peek()` перед
+одним POST. Эти allocations совпадали по времени с asyncio, JSON и socket
+objects; это подтверждённый peak-memory defect, но не доказательство причины
+каждого исторического timeout.
+
+Исправление сохраняет прежний layout `owner` + 16-digit `.msg/.bad/.tmp` и не
+вводит metadata file. Startup использует `os.ilistdir()`, полностью валидирует
+имена, восстанавливает целые `.tmp`, затем cache-ит `head`, `tail` и `count`.
+Обычные `peek`, `enqueue`, capacity и empty checks не обходят каталог. После
+ACK/quarantine следующий последовательный индекс проверяется точечно; сильно
+разреженный layout использует memory-bounded streaming fallback. Запись по-прежнему
+идёт через `.tmp`, flush/fsync, rename и directory sync. ACK по-прежнему удаляет
+только совпавшие checksum/body bytes. I/O failure пересобирает cache streaming
+scan и пробрасывается вызывающему коду.
+
+TDD добавил old-layout очереди на 400, 512 и 1000 сообщений, запрет directory
+scan во время steady-state operations, FIFO/holes/tail/count/capacity,
+quarantine, completed/duplicate/ambiguous `.tmp`, unexpected-file corruption и
+два startup passes без staging. Отдельный HTTP timeout test подтвердил close,
+bounded `wait_closed()` и отсутствие оставшейся request task; второго firmware
+network lifecycle defect на host не обнаружено.
+
+Локальная проверка ветки:
+
+```text
+ESP32 host tests: 153 passed
+pytest -m 'not database': 268 passed, 22 deselected
+MicroPython 1.29.0 mpy-cross 0fd6c573...: six modules compiled
+```
+
+Disposable Supabase suite локально не выполнялся: Docker socket недоступен.
+Это не скрытый skip; database tests явно deselected. Их результат нужно проверить
+в CI на точном опубликованном SHA.
+
+На ESP32 до обновления было `389 .msg`, `0 .bad`, `0 .tmp`; прежний показатель
+390 включал `owner`. После обновления новые HC-SR04 samples продолжали сохраняться,
+а десятки сообщений получили `delivery_ack` без `MemoryError`. Финальный firmware
+логирует total count: при работающем API и продолжающемся сборе он уменьшился
+с 457 до 450 во время стабильного окна. Zero-byte staging-файлы, созданные
+принудительными `mpremote` interruptions во время диагностики, не удалялись:
+оператор сохранил их как `.bad`, поэтому они продолжают учитываться в capacity
+и total count. Исходные pending bytes не удалялись и device identity не менялась.
+
+LittleFS оказался почти заполнен: overwrite source modules получил `ENOSPC`.
+Повреждённый partial `tlm_core.py` и старый `tlm_runtime.py` были заменены только
+после проверки на pinned `.mpy` (5310 и 1868 bytes) с совпавшими SHA-256; outbox,
+config и остальные firmware files не менялись. После установки оставался один
+4 KiB free block. Configured capacity 512 поэтому не является гарантией, что
+конкретная filesystem вместит 512 records: backlog должен продолжать уходить,
+а свободное место — контролироваться без удаления pending telemetry.
+
+Во время hardware run API→Supabase периодически сообщал `OperationalError` и
+`ConnectionTimeout`; прямой runtime login один раз подтвердился как `tlm_api`,
+но последующие read-only SQL checks дважды не дошли до БД из-за временного DNS
+failure для pooler hostname. Поэтому новые Supabase rows и duplicate query нужно
+повторно подтвердить после восстановления DNS. Firmware timeout при этом сохранял
+точные сообщения и sampling продолжался; это внешний remaining risk, а не повод
+менять token, DSN, CA или очищать outbox.
+
+После этой проверки общий host DNS outage продолжился, API снова перестал писать
+в PostgreSQL, и total начал расти. Для защиты почти заполненного LittleFS runtime
+был остановлен в REPL без reset. Эта остановка также попала в начало flash write;
+третий нулевой `.tmp` был сохранён как `.bad`. Проверенное состояние на момент
+остановки было `458 .msg`, `3 .bad`, `0 .tmp`; плата оставалась остановленной до
+восстановления DNS/API→Supabase. Значение 450 выше остаётся фактическим
+подтверждением net drain в стабильном окне, а 458 — более поздним состоянием
+после внешнего outage. Не делать reset до восстановления backend path: autostart
+снова начнёт sampling при минимальном свободном месте.
+
+## Последовательный single-message runtime
+
+После восстановления DNS отдельный drain-only запуск теми же `send_once()` и
+ACK checks удалил 32 подтверждённых backlog records: total уменьшился строго
+`462 → 430` без sensor reads. Этот результат показал, что простая последовательная
+модель подходит фактическому требованию лучше прежних независимых collector и
+delivery tasks. Перед drain неудачная попытка обычного startup при полном flash
+создала ещё один нулевой staging artifact; он также сохранён как `.bad`. Поэтому
+после drain фактическое состояние — `426 .msg`, `4 .bad`, `0 .tmp`.
+
+По явному решению пользователя ESP32 runtime теперь не измеряет новый sample,
+пока существует pending `.msg`. Один loop выполняет:
+
+```text
+legacy/pending message → POST same bytes until valid ACK → exact delete
+empty outbox + due cadence → HC-SR04 read → persist one message → POST
+```
+
+Timeout/5xx/429 сохраняют единственный message и применяют прежний backoff;
+интервальные measurements во время ожидания ACK намеренно пропускаются. После
+очистки существующего backlog steady state содержит не более одного `.msg`.
+Формат файлов, checksum, power-loss staging, message identity, HTTP contract и
+Supabase schema не менялись.
+
+Новые RED tests сначала подтвердили прежний дефект policy: retry всё ещё читал
+sensor, а blocked DNS/NTP накопил по три файла. После удаления `collect()`/
+`deliver()` и `asyncio.gather()` tests требуют ноль sensor reads при pending,
+ровно один новый sample после ACK, один persisted file при blocked network,
+exact retry bytes и корректный single-runtime guard.
+
+На плату был скопирован только новый `tlm_runtime.mpy`; `config.secret.json` и
+outbox не изменялись. После reset production runtime последовательно уменьшил
+total `430 → 4`: все 426 `.msg` получили ACK, а четыре диагностических `.bad`
+остались на flash. До `delivery_ack 4` не было ни одного `sample_persisted`, то
+есть HC-SR04 не читался во время backlog drain. `MemoryError` не повторился.
+
+Во время drain реальный API кратко сообщил PostgreSQL `ConnectionTimeout` и
+`OperationalError`. ESP32 сохранила текущий файл, прошла retry/backoff
+`1, 2, 4, 8, 16, 32` и после восстановления backend продолжила с того же места.
+После drain наблюдались последовательные пары `sample_persisted N` /
+`delivery_ack 4`; как минимум samples 1–23 завершили цикл, а невалидные
+HC-SR04 readings логировались как `sensor_error` без создания telemetry.
+
+Read-only Supabase query показал свежие реальные `distance_cm` rows для
+зафиксированного device ID; duplicate query по `(device_id, message_id)` вернул
+ноль строк. Host validation: 154 ESP32 tests и 269 non-database tests прошли.

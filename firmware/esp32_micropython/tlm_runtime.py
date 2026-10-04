@@ -1,4 +1,4 @@
-"""Cooperative sampling and delivery, with no Linux-only dependencies."""
+"""Sequential persist-then-ACK runtime, with no Linux-only dependencies."""
 import asyncio
 
 from hcsr04 import SensorReadError
@@ -48,67 +48,54 @@ async def send_once(queue, transport, log=None):
     return action, headers.get("retry-after")
 
 
-async def collect(queue, sensor, device_id, stream_id, clock, log=print):
-    cadence = Cadence(clock.ticks_ms(), clock.ticks_add, clock.ticks_diff)
-    sequence = 1
-    while True:
-        if cadence.due(clock.ticks_ms()):
-            try:
-                sample_once(queue, sensor, device_id, stream_id, sequence)
-            except SensorReadError:
-                # Missing/out-of-range echoes are NOT converted into fake readings.
-                log("sensor_error: no valid distance; sample omitted")
-            else:
-                log("sample_persisted", sequence)
-                sequence += 1
-        await asyncio.sleep(0.05)
-
-
-async def deliver(queue, transport, network_ready, log=print):
-    attempt = 0
-    while True:
-        if queue.peek() is None:
-            await asyncio.sleep(0.2)
-            continue
-        if not await network_ready():
-            await asyncio.sleep(1)
-            continue
-        action, retry_after = await send_once(queue, transport, log)
-        if action == "fatal":
-            raise RuntimeError("Device authorization or endpoint needs operator attention")
-        if action == "retry":
-            delay = retry_seconds(attempt, retry_after)
-            attempt = min(attempt + 1, 6)
-            log("delivery_retry", delay)
-            await asyncio.sleep(delay)
-        else:
-            attempt = 0
-            if action != "empty":
-                log("delivery_" + action)
-            await asyncio.sleep(0.05)
-
-
 async def run(queue, sensor, device_id, transport, network_ready, clock, log=print):
     global _running
     if _running:
         raise RuntimeError("TLM runtime already running; reset device before manual restart")
     _running = True
-    tasks = []
-    # The new stream affects only newly sampled packets, never the persisted queue.
     try:
+        # The new stream affects only newly sampled packets, never the persisted queue.
         stream_id = uuid4()
-        tasks.append(asyncio.create_task(collect(queue, sensor, device_id, stream_id, clock, log)))
-        tasks.append(asyncio.create_task(deliver(queue, transport, network_ready, log)))
-        await asyncio.gather(*tasks)
+        cadence = Cadence(clock.ticks_ms(), clock.ticks_add, clock.ticks_diff)
+        sequence = 1
+        attempt = 0
+        while True:
+            # A persisted message always wins. No later sensor read occurs until
+            # it receives a valid ACK or is explicitly quarantined.
+            if not queue.has_pending():
+                if cadence.due(clock.ticks_ms()):
+                    try:
+                        sample_once(queue, sensor, device_id, stream_id, sequence)
+                    except SensorReadError:
+                        # Missing/out-of-range echoes are NOT converted into fake readings.
+                        log("sensor_error: no valid distance; sample omitted")
+                    else:
+                        log("sample_persisted", sequence)
+                        sequence += 1
+                if not queue.has_pending():
+                    await asyncio.sleep(0.05)
+                    continue
+
+            if not await network_ready():
+                await asyncio.sleep(1)
+                continue
+            action, retry_after = await send_once(queue, transport, log)
+            if action == "fatal":
+                raise RuntimeError("Device authorization or endpoint needs operator attention")
+            if action == "retry":
+                delay = retry_seconds(attempt, retry_after)
+                attempt = min(attempt + 1, 6)
+                log("delivery_retry", delay)
+                await asyncio.sleep(delay)
+            else:
+                attempt = 0
+                if action != "empty":
+                    log("delivery_" + action, queue.count())
+                if action in ("ack", "quarantine") and not queue.has_pending():
+                    # ticks_diff is defined only within half of its wrap period.
+                    # Rebase after a potentially long backlog wait so the next
+                    # measurement is due immediately and unambiguously.
+                    cadence = Cadence(clock.ticks_ms(), clock.ticks_add, clock.ticks_diff)
+                await asyncio.sleep(0.05)
     finally:
-        for task in tasks:
-            task.cancel()
-        try:
-            for task in tasks:
-                try:
-                    await task
-                except (asyncio.CancelledError, Exception):
-                    # The primary gather result remains the run() outcome.
-                    pass
-        finally:
-            _running = False
+        _running = False

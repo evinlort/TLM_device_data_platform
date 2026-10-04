@@ -102,6 +102,17 @@ def _write(path, data):
         os.sync()
 
 
+def _directory_names(path):
+    """Yield directory names without materializing them on MicroPython or CPython."""
+    if hasattr(os, "ilistdir"):
+        for entry in os.ilistdir(path):
+            yield entry[0]
+    else:
+        with os.scandir(path) as entries:
+            for entry in entries:
+                yield entry.name
+
+
 class FileOutbox:
     """Single-owner, single-event-loop LittleFS queue; never format on failure.
 
@@ -121,8 +132,9 @@ class FileOutbox:
         owner = directory + "/owner"
         staged_owner = directory + "/owner.tmp"
         if not _exists(owner):
-            if any(name != "owner.tmp" for name in os.listdir(directory)):
-                raise QueueCorrupt("Queue owner missing; preserve directory")
+            for name in _directory_names(directory):
+                if name != "owner.tmp":
+                    raise QueueCorrupt("Queue owner missing; preserve directory")
             if _exists(staged_owner):
                 with open(staged_owner, "rb") as stream:
                     if stream.read() != self.device_id.encode():
@@ -135,15 +147,7 @@ class FileOutbox:
             if stream.read() != self.device_id.encode():
                 raise ValueError("Queue belongs to another device")
         self._recover()
-
-    def _names(self):
-        result = []
-        for name in os.listdir(self.directory):
-            if name == "owner":
-                continue
-            self._validate_name(name)
-            result.append(name)
-        return sorted(result)
+        self._rebuild_state()
 
     @staticmethod
     def _validate_name(name):
@@ -169,53 +173,135 @@ class FileOutbox:
         return body
 
     def _recover(self):
-        for name in self._names():
-            if name.endswith(".tmp"):
-                body = self._read(name)
-                target = name[:-4] + ".msg"
-                if _exists(self.directory + "/" + target):
-                    if self._read(target) != body:
-                        raise QueueCorrupt("Ambiguous interrupted write")
-                    os.remove(self.directory + "/" + name)
-                else:
-                    os.rename(self.directory + "/" + name, self.directory + "/" + target)
-                _sync_directory(self.directory)
+        # Validate the complete old layout before mutating any interrupted write.
+        staged = None
+        for name in _directory_names(self.directory):
+            if name != "owner":
+                self._validate_name(name)
+                if staged is None and name.endswith(".tmp"):
+                    staged = name
+        while staged is not None:
+            body = self._read(staged)
+            target = staged[:-4] + ".msg"
+            if _exists(self.directory + "/" + target):
+                if self._read(target) != body:
+                    raise QueueCorrupt("Ambiguous interrupted write")
+                os.remove(self.directory + "/" + staged)
+            else:
+                os.rename(self.directory + "/" + staged,
+                          self.directory + "/" + target)
+            _sync_directory(self.directory)
+            staged = None
+            for name in _directory_names(self.directory):
+                if name.endswith(".tmp"):
+                    staged = name
+                    break
+
+    def _rebuild_state(self):
+        count = 0
+        head = None
+        tail = 0
+        for name in _directory_names(self.directory):
+            if name == "owner":
+                continue
+            self._validate_name(name)
+            number = int(name[:16])
+            count += 1
+            if number > tail:
+                tail = number
+            if name.endswith(".msg") and (head is None or number < head):
+                head = number
+        self._count = count
+        self._head = head
+        self._tail = tail
+
+    @staticmethod
+    def _message_name(number):
+        return "%016d.msg" % number
+
+    def _next_head(self, previous):
+        # Normal queues are contiguous. Bound direct probes for sparse legacy
+        # layouts, then fall back to a constant-memory directory scan.
+        stop = min(self._tail, previous + 64)
+        for number in range(previous + 1, stop + 1):
+            if _exists(self.directory + "/" + self._message_name(number)):
+                return number
+        if stop == self._tail:
+            return None
+        head = None
+        for name in _directory_names(self.directory):
+            if name == "owner":
+                continue
+            self._validate_name(name)
+            if name.endswith(".msg"):
+                number = int(name[:16])
+                if number > previous and (head is None or number < head):
+                    head = number
+        return head
+
+    def has_pending(self):
+        return self._head is not None
+
+    def count(self):
+        return self._count
 
     def enqueue(self, body):
-        names = self._names()
-        if len(names) >= self.capacity:
+        if self._count >= self.capacity:
             raise QueueFull("Outbox full; existing messages retained")
         if not isinstance(body, bytes) or not 0 < len(body) <= MAX_MESSAGE_BYTES:
             raise ValueError("Invalid message bytes")
         if json.loads(body).get("device_id") != self.device_id:
             raise ValueError("Message belongs to another device")
-        number = max([int(name[:16]) for name in names] or [0]) + 1
+        number = self._tail + 1
         if number >= 10**16:
             raise QueueFull("Queue index exhausted")
         stem = self.directory + "/%016d" % number
-        _write(stem + ".tmp", _digest(body) + b"\n" + body)
-        os.rename(stem + ".tmp", stem + ".msg")
-        _sync_directory(self.directory)
+        try:
+            _write(stem + ".tmp", _digest(body) + b"\n" + body)
+            os.rename(stem + ".tmp", stem + ".msg")
+            _sync_directory(self.directory)
+        except OSError:
+            self._rebuild_state()
+            raise
+        self._count += 1
+        self._tail = number
+        if self._head is None:
+            self._head = number
 
     def peek(self):
-        for name in self._names():
-            if name.endswith(".msg"):
-                return name, self._read(name)
-        return None
+        if self._head is None:
+            return None
+        name = self._message_name(self._head)
+        return name, self._read(name)
 
     def ack(self, name, expected_body):
         if not name.endswith(".msg") or self._read(name) != expected_body:
             raise QueueCorrupt("ACK does not match queued bytes")
-        os.remove(self.directory + "/" + name)
-        _sync_directory(self.directory)
+        try:
+            os.remove(self.directory + "/" + name)
+            _sync_directory(self.directory)
+        except OSError:
+            self._rebuild_state()
+            raise
+        self._count -= 1
+        number = int(name[:16])
+        if self._head == number:
+            self._head = self._next_head(number)
 
     def quarantine(self, name):
         self._read(name)
         if not name.endswith(".msg"):
             raise QueueCorrupt("Not a pending record")
-        os.rename(self.directory + "/" + name,
-                  self.directory + "/" + name[:-4] + ".bad")
-        _sync_directory(self.directory)
+        try:
+            os.rename(self.directory + "/" + name,
+                      self.directory + "/" + name[:-4] + ".bad")
+            _sync_directory(self.directory)
+        except OSError:
+            self._rebuild_state()
+            raise
+        number = int(name[:16])
+        if self._head == number:
+            self._head = self._next_head(number)
 
 
 class Cadence:
