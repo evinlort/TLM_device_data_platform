@@ -62,20 +62,24 @@ def test_large_legacy_outbox_runtime_operations_do_not_rescan_directory(
 ):
     directory, records = legacy_outbox(core, tmp_path, size)
     queue = core.FileOutbox(str(directory), DEVICE, capacity=size + 2)
+    assert queue.count() == size
     forbid_directory_scan(monkeypatch, core)
 
     first_name, first_body = queue.peek()
     assert (first_name, first_body) == records[1]
 
     queue.enqueue(packet(core, size + 1))
+    assert queue.count() == size + 1
     assert (directory / ("%016d.msg" % (size + 1))).exists()
 
     queue.ack(first_name, first_body)
+    assert queue.count() == size
     assert not (directory / first_name).exists()
     second_name, second_body = queue.peek()
     assert (second_name, second_body) == records[2]
 
     queue.quarantine(second_name)
+    assert queue.count() == size
     assert not (directory / second_name).exists()
     assert (directory / second_name.replace(".msg", ".bad")).exists()
     assert queue.peek() == records[3]
@@ -110,6 +114,25 @@ def test_large_legacy_outbox_recovers_interrupted_write_without_listdir(
     assert queue.peek() == records[1]
     assert not (directory / records[1000][0]).exists()
     assert (directory / records[1000][0].replace(".tmp", ".msg")).exists()
+
+
+def test_startup_without_staging_uses_two_streaming_directory_passes(
+    core, monkeypatch, tmp_path
+):
+    directory, _ = legacy_outbox(core, tmp_path, 1000)
+    real_scandir = core.os.scandir
+    scans = []
+
+    def counted(path):
+        scans.append(path)
+        return real_scandir(path)
+
+    monkeypatch.setattr(core.os, "scandir", counted)
+
+    queue = core.FileOutbox(str(directory), DEVICE, capacity=1001)
+
+    assert queue.count() == 1000
+    assert scans == [str(directory), str(directory)]
 
 
 def test_sparse_legacy_layout_preserves_order_tail_count_and_quarantine(

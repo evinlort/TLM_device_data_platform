@@ -174,17 +174,13 @@ class FileOutbox:
 
     def _recover(self):
         # Validate the complete old layout before mutating any interrupted write.
+        staged = None
         for name in _directory_names(self.directory):
             if name != "owner":
                 self._validate_name(name)
-        while True:
-            staged = None
-            for name in _directory_names(self.directory):
-                if name.endswith(".tmp"):
+                if staged is None and name.endswith(".tmp"):
                     staged = name
-                    break
-            if staged is None:
-                return
+        while staged is not None:
             body = self._read(staged)
             target = staged[:-4] + ".msg"
             if _exists(self.directory + "/" + target):
@@ -195,6 +191,11 @@ class FileOutbox:
                 os.rename(self.directory + "/" + staged,
                           self.directory + "/" + target)
             _sync_directory(self.directory)
+            staged = None
+            for name in _directory_names(self.directory):
+                if name.endswith(".tmp"):
+                    staged = name
+                    break
 
     def _rebuild_state(self):
         count = 0
@@ -240,6 +241,9 @@ class FileOutbox:
 
     def has_pending(self):
         return self._head is not None
+
+    def count(self):
+        return self._count
 
     def enqueue(self, body):
         if self._count >= self.capacity:

@@ -84,7 +84,7 @@ async def deliver(queue, transport, network_ready, log=print):
         else:
             attempt = 0
             if action != "empty":
-                log("delivery_" + action)
+                log("delivery_" + action, queue.count())
             await asyncio.sleep(0.05)
 
 

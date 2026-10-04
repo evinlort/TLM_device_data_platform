@@ -70,6 +70,37 @@ def test_verified_ack_removes_only_saved_message(modules, tmp_path, status, labe
     assert q.peek() is None
 
 
+def test_delivery_ack_log_includes_remaining_outbox_count(modules, tmp_path):
+    _, _, runtime = modules
+    q = make_queue(modules, tmp_path)
+    logged = []
+
+    class Transport:
+        async def post(self, body):
+            message = json.loads(body)
+            ack = {'status': 'stored', 'device_id': DEVICE,
+                   'message_id': message['message_id'],
+                   'received_at': '2026-10-04T00:00:00Z'}
+            return 201, {'content-type': 'application/json'}, json.dumps(ack).encode()
+
+    async def scenario():
+        async def ready():
+            return True
+
+        task = asyncio.create_task(
+            runtime.deliver(q, Transport(), ready,
+                            log=lambda *parts: logged.append(parts))
+        )
+        while q.has_pending():
+            await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+    assert logged == [('delivery_ack', 0)]
+
+
 def test_timeout_retains_exact_packet_across_restart(modules, tmp_path):
     core, _, runtime = modules
     q = make_queue(modules, tmp_path)
