@@ -12,6 +12,10 @@ wiring, sampling period, or existing test assertion is changed.
 polled by the asyncio owner. The worker never calls asyncio, accesses the
 outbox, sets the RTC, or receives device tokens. The queue remains single-owner.
 
+The later single-message runtime policy keeps this worker design but supersedes
+the original independent collection behavior: blocked DNS/NTP now leaves one
+persisted message and prevents later sensor reads until delivery receives ACK.
+
 A job has a unique ticket. Its caller can time out or be cancelled; the native
 operation is not killed or replaced. Until it finishes, new work fails with a
 retryable busy error rather than spawning another thread or growing a backlog.
@@ -44,10 +48,10 @@ flash endurance, and physical power-loss behavior still need hardware acceptance
 ## Regression validation
 
 `tests/test_esp32_network_review.py` uses the exact firmware and real host
-threads. The collection tests run `tlm_runtime.run` with real FileOutbox writes
-while a DNS/NTP fixture blocks in the worker. Only the cadence is accelerated;
-readings and network operations are explicitly controlled software fixtures.
-They verify persisted sequences and unchanged queued bytes before transport.
+threads. Runtime tests use real FileOutbox writes while a DNS/NTP fixture blocks
+in the worker. Only the cadence is accelerated; readings and network operations
+are explicitly controlled software fixtures. They verify that exactly one
+packet is persisted and its bytes remain unchanged before transport.
 
 Other cases cover timeout/cancellation, busy retries, a single worker thread,
 late NTP answers, shutdown, recoverable worker failure, boot wiring, clock
