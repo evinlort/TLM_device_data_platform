@@ -152,3 +152,68 @@ ESP32 firmware run
 именно перекрытием runtime. Экспериментальный HTTP timeout 20 s, дополнительная
 пауза 8 s и GC-логи не подтвердили причину и в прошивку не перенесены.
 HTTP framing/TLS и правило точного duplicate ACK не изменены.
+
+## Большая flash-очередь — 04.10.2026
+
+На физическом стенде после первой успешной доставки накопились сотни файлов.
+Аппаратный замер показал, что прежние `os.listdir()` и `sorted()` временно
+занимали около 35 KiB при 390 directory entries. Старый `enqueue()` дополнительно
+строил список числовых индексов, а delivery loop дважды вызывал `peek()` перед
+одним POST. Эти allocations совпадали по времени с asyncio, JSON и socket
+objects; это подтверждённый peak-memory defect, но не доказательство причины
+каждого исторического timeout.
+
+Исправление сохраняет прежний layout `owner` + 16-digit `.msg/.bad/.tmp` и не
+вводит metadata file. Startup использует `os.ilistdir()`, полностью валидирует
+имена, восстанавливает целые `.tmp`, затем cache-ит `head`, `tail` и `count`.
+Обычные `peek`, `enqueue`, capacity и empty checks не обходят каталог. После
+ACK/quarantine следующий последовательный индекс проверяется точечно; сильно
+разреженный layout использует memory-bounded streaming fallback. Запись по-прежнему
+идёт через `.tmp`, flush/fsync, rename и directory sync. ACK по-прежнему удаляет
+только совпавшие checksum/body bytes. I/O failure пересобирает cache streaming
+scan и пробрасывается вызывающему коду.
+
+TDD добавил old-layout очереди на 400, 512 и 1000 сообщений, запрет directory
+scan во время steady-state operations, FIFO/holes/tail/count/capacity,
+quarantine, completed/duplicate/ambiguous `.tmp`, unexpected-file corruption и
+два startup passes без staging. Отдельный HTTP timeout test подтвердил close,
+bounded `wait_closed()` и отсутствие оставшейся request task; второго firmware
+network lifecycle defect на host не обнаружено.
+
+Локальная проверка ветки:
+
+```text
+ESP32 host tests: 153 passed
+pytest -m 'not database': 268 passed, 22 deselected
+MicroPython 1.29.0 mpy-cross 0fd6c573...: six modules compiled
+```
+
+Disposable Supabase suite локально не выполнялся: Docker socket недоступен.
+Это не скрытый skip; database tests явно deselected. Их результат нужно проверить
+в CI на точном опубликованном SHA.
+
+На ESP32 до обновления было `389 .msg`, `0 .bad`, `0 .tmp`; прежний показатель
+390 включал `owner`. После обновления новые HC-SR04 samples продолжали сохраняться,
+а десятки сообщений получили `delivery_ack` без `MemoryError`. Финальный firmware
+логирует total count: при работающем API и продолжающемся сборе он уменьшился
+с 457 до 450, затем runtime был оставлен работающим. Два zero-byte staging-файла,
+созданных принудительными `mpremote` interruptions во время диагностики, не были
+удалены: оператор сохранил их как `.bad`, поэтому они продолжают учитываться в
+capacity и total count. Исходные pending bytes не удалялись и device identity не
+менялась.
+
+LittleFS оказался почти заполнен: overwrite source modules получил `ENOSPC`.
+Повреждённый partial `tlm_core.py` и старый `tlm_runtime.py` были заменены только
+после проверки на pinned `.mpy` (5310 и 1868 bytes) с совпавшими SHA-256; outbox,
+config и остальные firmware files не менялись. После установки оставался один
+4 KiB free block. Configured capacity 512 поэтому не является гарантией, что
+конкретная filesystem вместит 512 records: backlog должен продолжать уходить,
+а свободное место — контролироваться без удаления pending telemetry.
+
+Во время hardware run API→Supabase периодически сообщал `OperationalError` и
+`ConnectionTimeout`; прямой runtime login один раз подтвердился как `tlm_api`,
+но последующие read-only SQL checks дважды не дошли до БД из-за временного DNS
+failure для pooler hostname. Поэтому новые Supabase rows и duplicate query нужно
+повторно подтвердить после восстановления DNS. Firmware timeout при этом сохранял
+точные сообщения и sampling продолжался; это внешний remaining risk, а не повод
+менять token, DSN, CA или очищать outbox.
