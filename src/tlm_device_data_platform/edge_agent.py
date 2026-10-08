@@ -23,6 +23,8 @@ from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_ope
 from uuid import UUID, uuid4
 
 from .telemetry_v1 import TelemetryV1
+from .telemetry_v2 import TelemetryV2, parse_message
+from .device_context import DeviceContext, ContextTracker, ContextPending
 from .private_config import load_private_config
 
 _LOG = logging.getLogger(__name__)
@@ -69,7 +71,7 @@ class Outbox:
         return db
 
     def enqueue(self, body: bytes) -> None:
-        message = TelemetryV1.parse(body)
+        message = parse_message(body)
         if message.device_id != self.device_id:
             raise ValueError("Outbox device mismatch")
         with closing(self._connect()) as db, db:
@@ -96,6 +98,21 @@ class Outbox:
         with closing(self._connect()) as db:
             return dict(db.execute("SELECT state, count(*) FROM messages GROUP BY state"))
 
+    def load_context(self):
+        with closing(self._connect()) as db:
+            row = db.execute("SELECT value FROM metadata WHERE key='context'").fetchone()
+        return DeviceContext.parse(row[0],self.device_id) if row else None
+
+    def save_context(self, context):
+        context = DeviceContext.parse(context.to_bytes(),self.device_id)
+        with closing(self._connect()) as db, db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute("SELECT value FROM metadata WHERE key='context'").fetchone()
+            old = DeviceContext.parse(row[0],self.device_id) if row else None
+            if old and (context.revision < old.revision or (context.revision == old.revision and context != old)):
+                raise ValueError('Device context revision regressed or changed identity')
+            db.execute("INSERT OR REPLACE INTO metadata(key,value) VALUES ('context',?)",(context.to_bytes().decode(),))
+
 
 class _NoRedirects(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -114,7 +131,7 @@ class HTTPSender:
                  timeout_seconds: float = DEFAULT_HTTP_TIMEOUT_SECONDS):
         parsed = urlsplit(url)
         if (not parsed.hostname or parsed.username or parsed.password or parsed.query
-                or parsed.fragment or parsed.path != "/v1/telemetry"
+                or parsed.fragment or parsed.path not in ("/v1/telemetry", "/v2/telemetry")
                 or any(c in url for c in "\r\n")):
             raise ValueError("Invalid telemetry endpoint")
         if parsed.scheme != "https" and not (allow_insecure_http and parsed.scheme == "http"):
@@ -131,8 +148,9 @@ class HTTPSender:
         self._opener = build_opener(_NoRedirects(), HTTPSHandler(context=ssl.create_default_context()))
 
     def send(self, body: bytes) -> Delivery:
-        message = TelemetryV1.parse(body)
-        request = Request(self._url, data=body, method="POST", headers={
+        message = parse_message(body)
+        endpoint = self._url.rsplit("/", 2)[0] + ("/v2/telemetry" if isinstance(message, TelemetryV2) else "/v1/telemetry")
+        request = Request(endpoint, data=body, method="POST", headers={
             "Authorization": f"Bearer {self._token}", "Content-Type": "application/json"})
         try:
             try:
@@ -166,6 +184,29 @@ class HTTPSender:
                 raise FatalDelivery("TLS certificate verification failed; queue preserved") from error
             return Delivery("retry", "network_error")
 
+    def context(self, device_id):
+        url = self._url.rsplit('/',2)[0]+'/v2/devices/'+str(device_id)+'/context'
+        request = Request(url,headers={'Authorization':'Bearer '+self._token})
+        try:
+            try:
+                response = self._opener.open(request,timeout=self._timeout_seconds)
+            except HTTPError as error:
+                response = error
+            with response:
+                if response.status in (408,429) or response.status >= 500:
+                    raise OSError('Device context unavailable')
+                if response.status != 200:
+                    raise FatalDelivery('Device context authorization rejected')
+                body = response.read(4097)
+                if len(body)>4096:
+                    raise ValueError('Device context too large')
+                return DeviceContext.parse(body,device_id)
+        except (URLError,HTTPException,TimeoutError) as error:
+            reason = error.reason if isinstance(error,URLError) else error
+            if isinstance(reason,ssl.SSLCertVerificationError):
+                raise FatalDelivery('TLS certificate verification failed') from None
+            raise OSError('Device context offline') from None
+
 
 def deliver_one(outbox: Outbox, sender: HTTPSender) -> Delivery:
     item = outbox.oldest()
@@ -193,7 +234,7 @@ def load_sensor(spec: str):
 
 
 def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
-              synchronized_clock=True, drain_seconds=DEFAULT_DRAIN_SECONDS):
+              synchronized_clock=True, drain_seconds=DEFAULT_DRAIN_SECONDS, context_tracker=None):
     if interval <= 0 or count < 0 or drain_seconds < 0:
         raise ValueError("Invalid collection settings")
     stop, failures, queue_access = Event(), [], Lock()
@@ -209,6 +250,8 @@ def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
                 else:
                     message_id, body = item
                     result = sender.send(body)
+                    if context_tracker and result.action == "ack":
+                        context_tracker.observe_delivery()
                     with queue_access:
                         if stop.is_set():
                             break
@@ -229,6 +272,18 @@ def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
             failures.append(error)
             stop.set()
 
+    def refresh_context():
+        try:
+            while not stop.is_set():
+                context_tracker.refresh()
+                stop.wait(2)
+        except Exception as error:
+            failures.append(error)
+            stop.set()
+
+    context_worker = Thread(target=refresh_context,daemon=True) if context_tracker else None
+    if context_worker:
+        context_worker.start()
     worker = Thread(target=transmit, daemon=True)
     worker.start()
     try:
@@ -242,15 +297,29 @@ def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
                 raise OutboxFull("Outbox full with no pending records; operator action required")
             stop.wait(SENDER_POLL_SECONDS)
         stream_id, sequence_no, deadline = uuid4(), 1, time.monotonic()
-        while not stop.is_set() and (count == 0 or sequence_no <= count):
+        collected, session_id = 0, None
+        while not stop.is_set() and (count == 0 or collected < count):
             if stop.wait(max(0, deadline - time.monotonic())):
                 break
+            context = None
+            if context_tracker:
+                try:
+                    context = context_tracker.current()
+                except ContextPending:
+                    stop.wait(SENDER_POLL_SECONDS)
+                    continue
+                if context.session_id != session_id:
+                    stream_id, sequence_no = uuid4(), 1
+                    session_id = context.session_id
             readings = reader()
             captured = datetime.now(timezone.utc) if synchronized_clock else None
-            message = TelemetryV1(outbox.device_id, uuid4(), stream_id, sequence_no, captured, readings)
+            message = (TelemetryV2(outbox.device_id, uuid4(), stream_id, sequence_no,
+                                   captured, readings, context.session_id) if context else
+                       TelemetryV1(outbox.device_id, uuid4(), stream_id, sequence_no, captured, readings))
             with queue_access:
                 outbox.enqueue(message.to_bytes())
             sequence_no += 1
+            collected += 1
             deadline += interval
             if deadline < time.monotonic():
                 deadline = time.monotonic() + interval
@@ -263,14 +332,18 @@ def run_agent(outbox, sender, reader, *, interval=10.0, count=0,
             stop.wait(SENDER_POLL_SECONDS)
     finally:
         stop.set()
+        if context_tracker:
+            context_tracker.close()
         # Wait for any current SQLite mutation. A sender still blocked in I/O will
         # observe stop before applying its result, so queue ownership can be released.
         with queue_access:
             pass
         worker.join(timeout=SENDER_JOIN_TIMEOUT_SECONDS)
+        if context_worker:
+            context_worker.join(timeout=SENDER_JOIN_TIMEOUT_SECONDS)
     if failures:
         raise failures[0]
-    if worker.is_alive():
+    if worker.is_alive() or (context_worker and context_worker.is_alive()):
         raise FatalDelivery("Sender did not stop; queue remains durable")
     return outbox.counts()
 
@@ -304,7 +377,8 @@ def main() -> int:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             sender = HTTPSender(api_url, token,
                                 allow_insecure_http=args.allow_insecure_http)
-            counts = run_agent(outbox, sender, reader, count=args.count,
+            tracker = ContextTracker(outbox,sender) if urlsplit(api_url).path == "/v2/telemetry" else None
+            counts = run_agent(outbox, sender, reader, count=args.count, context_tracker=tracker,
                                synchronized_clock=not args.unsynchronized_clock)
             _LOG.info("Remaining outbox records by state: %s", counts)
             return 0 if not counts else 2

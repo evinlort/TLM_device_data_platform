@@ -226,3 +226,93 @@ LIMIT 20;
 
 До предоставления настоящего sensor driver, выбранного dev-проекта и API-хоста
 проверен программный путь с локальным Supabase, а не развёрнутый физический стенд.
+
+## Дополнение: dashboard, пользователи и v2
+
+Для ветки session-user-access сначала прочитайте
+[handoff](SESSION_USER_ACCESS.md) и [протокол v2](PROTOCOL_V2.md).
+Прежние инструкции v1 остаются применимыми к ingestion runtime и устройствам.
+Новый dashboard не включается частичной конфигурацией: сервер требует все четыре
+дополнительных поля вместе с TLM_DATABASE_DSN.
+
+Ordered migration: `20261008010000_add_session_user_access.sql`.
+До удалённого применения в разрешённом dev-проекте `zcpclncljcfvlloetbpv` проверить
+фактическую migration history, затем dry-run. Выполнять только с восстановленной
+приватной конфигурацией и verify-full TLS. В workspace credentials отсутствуют.
+
+```bash
+npx --no-install supabase link --project-ref zcpclncljcfvlloetbpv
+npx --no-install supabase migration list
+npx --no-install supabase db push --dry-run
+npx --no-install supabase db push
+.venv/bin/python -m tlm_device_data_platform.provision --admin-config /secure/admin.secret.json --apply user-runtime --output /secure/user-runtime.secret.json --pooler-project-ref zcpclncljcfvlloetbpv
+```
+
+Параметр pooler-project-ref нужен только для выбранного session pooler; direct
+connection его не использует. Файл и LOGIN создаются один раз, без перезаписи.
+Runtime `tlm_user_api` получает только tlm_user. Ingestion использует прежний
+отдельный tlm_ingest LOGIN. Не объединять роли, не передавать admin DSN серверу.
+
+В hosted Auth явно отключить email confirmation для подтверждённого пилота
+через настройки проекта. Локальное `enable_confirmations=false` не меняет remote.
+Схему tlm не включать в exposed schemas. Пример полного серверного JSON (0600):
+
+```json
+{
+  "TLM_DATABASE_DSN": "<existing restricted ingestion DSN>",
+  "TLM_USER_DATABASE_DSN": "<new restricted user runtime DSN>",
+  "TLM_SUPABASE_URL": "https://zcpclncljcfvlloetbpv.supabase.co",
+  "TLM_SUPABASE_KEY": "<publishable or anon Auth key>",
+  "TLM_PUBLIC_ORIGIN": "https://<confirmed API host>"
+}
+```
+
+Это конфигурация на сервере, не на Linux/ESP32. Management/service keys для Auth
+настройки не нужны работающему API. Используйте public_origin внешнего HTTPS
+reverse proxy: cookies получают Secure и Origin сверяется именно с этим адресом.
+HTTP для локального UI допустим на loopback; HTTP в изолированной лаборатории
+требует прежнего явного --allow-insecure-lan и public_origin с HTTP.
+
+```bash
+.venv/bin/python -m tlm_device_data_platform.serve_api --config /secure/server.secret.json
+```
+
+Откройте `/`, зарегистрируйте выбранный оператором аккаунт. Первый профиль
+pending. Получите его UUID из authenticated `/v1/auth/me` или операторского SQL
+в явно выбранной БД; назначьте первого admin явно:
+
+```bash
+.venv/bin/python -m tlm_device_data_platform.provision --admin-config /secure/admin.secret.json --apply bootstrap-admin --user-id <EXPLICIT_AUTH_USER_UUID>
+```
+
+Повторный bootstrap при существующем approved admin запрещён. Дальнейшие роли,
+одобрение и блокировка выполняются в admin UI/API. Student/teacher требуют школу;
+pending требует очищенных role и school. Teacher создаёт draft, выбирает несколько
+студентов/устройств, запускает и завершает сессию. После старта состав фиксирован.
+
+Переключение Linux в v2 — заменить path TLM_API_URL на `/v2/telemetry`. Остальные
+credential/outbox/sensor параметры сохраняются. Перед первым измерением агент
+получает device context; существующая очередь v1 доставляется на v1 endpoint.
+ESP32 также использует TLM_API_URL с `/v2/telemetry`: заменить обновлённые шесть
+исходников по USB, сохранить config/CA/outbox и context sidecar. Не удалять очередь
+или менять token ради обновления. Hardware v2 требует отдельной приёмки.
+
+Remote программная приёмка после реального развёртывания:
+
+1. Явно обозначить TEST-account/student/teacher и TEST-school; создать отдельное
+   устройство с system_type `TEST software session access`, не использовать
+   credentials физического стенда.
+2. Зарегистрировать TEST-users через API, убедиться в pending и отказе чтения,
+   назначить роли/школу через admin; проверить login, refresh, logout и disabled.
+3. Создать TEST-session, назначить TEST-device, start; получить context по его
+   device token. Отправить только явно помеченные `test_sensor` software readings.
+4. Проверить разрешённое чтение student, отказ foreign student/teacher и global
+   manager/admin. Убедиться, что dashboard ожидает packet до первой v2 записи.
+5. Завершить TEST-session; отправить её исходный поздний packet, повторить duplicate
+   и конфликт изменённого session_id. Создать новую TEST-session и проверить смену
+   stream и сохранение принадлежности старой очереди.
+6. Сохранить фактическую дату, target, API origin, version/SHA и результаты в handoff.
+   TEST rows — исторические test records; не выдавать их за hardware measurements.
+
+Никакой remote reset или запуск disposable database tests на remote для этой
+приёмки не требуется. При неизвестном результате COMMIT сначала сверить БД.

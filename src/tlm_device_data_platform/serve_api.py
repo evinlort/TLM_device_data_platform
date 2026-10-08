@@ -4,6 +4,8 @@ import logging
 import os
 from pathlib import Path
 
+from urllib.parse import urlsplit
+
 import uvicorn
 
 from .ingestion import create_app
@@ -25,11 +27,30 @@ def main() -> int:
     if args.host not in {"127.0.0.1", "localhost", "::1"} and not args.ssl_certfile and not args.allow_insecure_lan:
         parser.error("Non-loopback listeners require TLS or explicit --allow-insecure-lan")
     try:
-        config = load_private_config(args.config, {"TLM_DATABASE_DSN"}) if args.config else {}
+        keys = {'TLM_DATABASE_DSN','TLM_USER_DATABASE_DSN','TLM_SUPABASE_URL','TLM_SUPABASE_KEY','TLM_PUBLIC_ORIGIN'}
+        config = load_private_config(args.config, keys) if args.config else {}
+        for key in keys:
+            if key not in config and os.environ.get(key):
+                config[key] = os.environ[key]
         dsn = config.get("TLM_DATABASE_DSN") or os.environ.get("TLM_DATABASE_DSN")
         if not dsn:
             raise ValueError("TLM_DATABASE_DSN is required")
-        app = create_app(PostgresTelemetryRepository(dsn))
+        user_keys = keys - {'TLM_DATABASE_DSN'}
+        if any(config.get(key) for key in user_keys):
+            if not all(config.get(key) for key in user_keys):
+                raise ValueError('Complete user runtime, Auth and public origin configuration is required')
+            from .user_access import UserRepository, SupabaseAuth
+            origin = urlsplit(config['TLM_PUBLIC_ORIGIN'])
+            if (origin.scheme not in ('http','https') or not origin.hostname or origin.path or
+                    origin.username or origin.password or origin.query or origin.fragment or
+                    (origin.scheme == 'http' and origin.hostname not in {'127.0.0.1','localhost','::1'} and not args.allow_insecure_lan)):
+                raise ValueError('Public origin requires HTTPS or the explicit isolated-lab HTTP option')
+            app = create_app(PostgresTelemetryRepository(dsn),
+                user_repository=UserRepository(config['TLM_USER_DATABASE_DSN']),
+                auth_provider=SupabaseAuth(config['TLM_SUPABASE_URL'],config['TLM_SUPABASE_KEY'],allow_insecure_local=True),
+                cookie_secure=origin.scheme == 'https',public_origin=config['TLM_PUBLIC_ORIGIN'])
+        else:
+            app = create_app(PostgresTelemetryRepository(dsn))
         uvicorn.run(app, host=args.host, port=args.port, ssl_certfile=args.ssl_certfile,
                     ssl_keyfile=args.ssl_keyfile, access_log=False, proxy_headers=False,
                     limit_concurrency=32, timeout_keep_alive=5)

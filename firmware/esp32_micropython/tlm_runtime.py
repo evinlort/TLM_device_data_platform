@@ -11,9 +11,9 @@ def runtime_active():
     return _running
 
 
-def sample_once(queue, sensor, device_id, stream_id, sequence_no, new_id=uuid4):
+def sample_once(queue, sensor, device_id, stream_id, sequence_no, new_id=uuid4, context=None):
     readings = sensor.read()
-    body = make_message(device_id, stream_id, sequence_no, readings, new_id())
+    body = make_message(device_id, stream_id, sequence_no, readings, new_id(), context=context)
     queue.enqueue(body)
     return body
 
@@ -58,14 +58,33 @@ async def run(queue, sensor, device_id, transport, network_ready, clock, log=pri
         stream_id = uuid4()
         cadence = Cadence(clock.ticks_ms(), clock.ticks_add, clock.ticks_diff)
         sequence = 1
+        session_aware = getattr(transport, 'session_aware', False)
+        context = queue.load_context() if session_aware else None
+        last_session = context['session_id'] if context else None
         attempt = 0
         while True:
             # A persisted message always wins. No later sensor read occurs until
             # it receives a valid ACK or is explicitly quarantined.
             if not queue.has_pending():
                 if cadence.due(clock.ticks_ms()):
+                    if session_aware:
+                        if await network_ready():
+                            try:
+                                fresh = await transport.fetch_context(device_id)
+                            except (OSError, EOFError, asyncio.TimeoutError):
+                                log('context_offline: retaining confirmed context')
+                            else:
+                                queue.save_context(fresh)
+                                context = fresh
+                        if context is None:
+                            log('context_pending: no measurement before initial context')
+                            await asyncio.sleep(1)
+                            continue
+                        if context['session_id'] != last_session:
+                            stream_id, sequence = uuid4(), 1
+                            last_session = context['session_id']
                     try:
-                        sample_once(queue, sensor, device_id, stream_id, sequence)
+                        sample_once(queue, sensor, device_id, stream_id, sequence, context=context)
                     except SensorReadError:
                         # Missing/out-of-range echoes are NOT converted into fake readings.
                         log("sensor_error: no valid distance; sample omitted")

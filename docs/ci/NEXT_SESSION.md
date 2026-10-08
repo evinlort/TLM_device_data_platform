@@ -30,3 +30,7 @@ Do not merge PR #2, delete either branch, change protection, reset a remote
 database, expose credentials, or deploy to an unidentified remote target without
 specific user authorization. Keep required CI independent of hardware and
 remote Supabase.
+
+Current session/user-access implementation and operational handoff:
+`docs/device_ingestion/SESSION_USER_ACCESS.md`. Read it before continuing the
+new feature; the preceding CI/ingestion milestones are historical.

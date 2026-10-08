@@ -1,6 +1,7 @@
 """Small bounded HTTP/1.1 client for MicroPython asyncio, with mandatory TLS by default."""
 import asyncio
 import ssl
+import json
 
 MAX_HEADERS = 8192
 MAX_RESPONSE = 2048
@@ -37,8 +38,8 @@ def _endpoint(url, allow_http):
     else:
         raise ValueError("HTTPS is required")
     parts = authority.split("/", 1)
-    if len(parts) != 2 or parts[1] != "v1/telemetry":
-        raise ValueError("Expected /v1/telemetry without query or fragment")
+    if len(parts) != 2 or parts[1] not in ("v1/telemetry", "v2/telemetry"):
+        raise ValueError("Expected versioned telemetry endpoint without query or fragment")
     authority = parts[0]
     pieces = authority.split(":")
     if len(pieces) > 2:
@@ -138,6 +139,7 @@ class HTTPTransport:
                 or any(c not in _TOKEN_CHARS for c in token)):
             raise ValueError("Invalid device token")
         self.token = token
+        self.session_aware = url.endswith("/v2/telemetry")
         self.connector = connector or asyncio.open_connection
         self.resolver = resolver
         self.context = None
@@ -153,7 +155,27 @@ class HTTPTransport:
             raise ValueError("Invalid request body")
         return await asyncio.wait_for(self._post(body), 10)
 
+    async def fetch_context(self, device_id):
+        from tlm_core import validate_context
+        status, headers, body = await asyncio.wait_for(
+            self._request(b'', 'GET', '/v2/devices/'+device_id+'/context'), 10)
+        if status in (401, 403) or 300 <= status < 400:
+            raise RuntimeError('Device context authorization rejected')
+        if status != 200:
+            raise OSError('Device context unavailable')
+        if headers.get('content-type', '').split(';')[0].strip().lower() != 'application/json':
+            raise ValueError('Invalid context response')
+        return validate_context(json.loads(body), device_id)
+
     async def _post(self, body):
+        try:
+            data = json.loads(body)
+        except ValueError:
+            data = {}
+        version = 2 if isinstance(data, dict) and type(data.get('schema_version')) is int and data['schema_version'] == 2 else 1
+        return await self._request(body, 'POST', '/v%d/telemetry' % version)
+
+    async def _request(self, body, method, path):
         writer = None
         try:
             options = {}
@@ -168,10 +190,10 @@ class HTTPTransport:
             # avoids a second network lookup while preserving TLS SNI and Host.
             reader, writer = await self.connector(connect_host, self.port, **options)
             headers = (
-                "POST /v1/telemetry HTTP/1.1\r\nHost: %s\r\n"
+                "%s %s HTTP/1.1\r\nHost: %s\r\n"
                 "Authorization: Bearer %s\r\nContent-Type: application/json\r\n"
                 "Accept: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n"
-            ) % (self.authority, self.token, len(body))
+            ) % (method, path, self.authority, self.token, len(body))
             writer.write(headers.encode("ascii") + body)
             await writer.drain()
             return await _response(reader)

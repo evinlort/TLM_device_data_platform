@@ -41,7 +41,7 @@ def uuid4(random_bytes=os.urandom):
     return "-".join((text[:8], text[8:12], text[12:16], text[16:20], text[20:]))
 
 
-def make_message(device_id, stream_id, sequence_no, payload, message_id, captured_at=None):
+def make_message(device_id, stream_id, sequence_no, payload, message_id, captured_at=None, context=None):
     if type(sequence_no) is not int or not 1 <= sequence_no < 2**63:
         raise ValueError("Invalid sequence number")
     if not isinstance(payload, dict) or not 1 <= len(payload) <= 128:
@@ -61,10 +61,24 @@ def make_message(device_id, stream_id, sequence_no, payload, message_id, capture
         "message_id": canonical_uuid(message_id), "stream_id": canonical_uuid(stream_id),
         "sequence_no": sequence_no, "captured_at": None, "payload": payload,
     }
+    if context is not None:
+        context = validate_context(context, device_id)
+        message['schema_version'] = 2
+        message['session_id'] = context['session_id']
     body = json.dumps(message).encode("utf-8")
     if len(body) > MAX_MESSAGE_BYTES:
         raise ValueError("Message too large for ESP32 pilot")
     return body
+
+
+def validate_context(data, device_id):
+    if not isinstance(data, dict) or set(data) != {'device_id', 'session_id', 'revision'}:
+        raise ValueError('Invalid device context')
+    if canonical_uuid(data['device_id']) != device_id or type(data['revision']) is not int or not 0 <= data['revision'] < 2**63:
+        raise ValueError('Invalid device context identity or revision')
+    if data['session_id'] is not None:
+        canonical_uuid(data['session_id'])
+    return data
 
 
 def _digest(body):
@@ -148,6 +162,43 @@ class FileOutbox:
                 raise ValueError("Queue belongs to another device")
         self._recover()
         self._rebuild_state()
+
+    def _context_file(self, path):
+        with open(path, 'rb') as stream:
+            record = stream.read(1025)
+        if len(record) > 1024 or len(record) < 66 or record[64:65] != b'\n' or record[:64] != _digest(record[65:]):
+            raise QueueCorrupt('Context checksum mismatch')
+        try:
+            return validate_context(json.loads(record[65:]), self.device_id)
+        except (ValueError, TypeError, KeyError):
+            raise QueueCorrupt('Invalid cached context')
+
+    def load_context(self):
+        path = self.directory + '.context'
+        old = self._context_file(path) if _exists(path) else None
+        if _exists(path + '.tmp'):
+            staged = self._context_file(path + '.tmp')
+            if old and (staged['revision'] < old['revision'] or
+                        (staged['revision'] == old['revision'] and staged != old)):
+                raise QueueCorrupt('Ambiguous cached context')
+            os.rename(path + '.tmp', path)
+            _sync_directory((self.directory.rsplit('/', 1)[0] or '/') if '/' in self.directory else '.')
+            old = staged
+        return old
+
+    def save_context(self, context):
+        context = validate_context(context, self.device_id)
+        old = self.load_context()
+        if old and (context['revision'] < old['revision'] or
+                    (context['revision'] == old['revision'] and context != old)):
+            raise ValueError('Context revision regressed or changed identity')
+        if old == context:
+            return
+        body = json.dumps(context).encode()
+        path = self.directory + '.context'
+        _write(path + '.tmp', _digest(body) + b'\n' + body)
+        os.rename(path + '.tmp', path)
+        _sync_directory((self.directory.rsplit('/', 1)[0] or '/') if '/' in self.directory else '.')
 
     @staticmethod
     def _validate_name(name):

@@ -36,6 +36,33 @@ def provision_runtime(admin_dsn: str, output: Path, *, role: str = "tlm_api",
         db.execute(sql.SQL("GRANT tlm_ingest TO {}").format(sql.Identifier(role)))
 
 
+def provision_user_runtime(admin_dsn: str, output: Path, *, role='tlm_user_api',
+                           pooler_project_ref=None):
+    validate_dsn(admin_dsn)
+    if not re.fullmatch(r'tlm_user_api(?:_[a-z0-9_]{1,40})?',role):
+        raise ValueError('User runtime must use a tlm_user_api prefixed role')
+    if pooler_project_ref is not None and not re.fullmatch(r'[a-z0-9]{1,64}',pooler_project_ref):
+        raise ValueError('Invalid pooler project reference')
+    password=secrets.token_urlsafe(32)
+    wire_user=f'{role}.{pooler_project_ref}' if pooler_project_ref else role
+    dsn=make_conninfo(admin_dsn,user=wire_user,password=password,options='')
+    write_private_config(output,{'TLM_USER_DATABASE_DSN':dsn})
+    with psycopg.connect(admin_dsn,connect_timeout=5) as db:
+        db.execute(sql.SQL('CREATE ROLE {} LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD {}').format(sql.Identifier(role),sql.Literal(password)))
+        db.execute(sql.SQL('GRANT tlm_user TO {}').format(sql.Identifier(role)))
+
+
+def bootstrap_admin(admin_dsn: str, user_id: UUID):
+    validate_dsn(admin_dsn)
+    with psycopg.connect(admin_dsn,connect_timeout=5) as db:
+        db.execute('LOCK TABLE tlm.user_profiles IN SHARE ROW EXCLUSIVE MODE')
+        if db.execute("SELECT 1 FROM tlm.user_profiles WHERE role='admin' AND status='approved'").fetchone():
+            raise ValueError('An approved admin already exists; use the admin API')
+        row=db.execute("UPDATE tlm.user_profiles SET role='admin',school_id=NULL,status='approved' WHERE user_id=%s AND status='pending' RETURNING user_id",(user_id,)).fetchone()
+        if not row:
+            raise ValueError('Bootstrap requires an explicitly identified pending Auth user')
+
+
 def provision_device(admin_dsn: str, output: Path, *, system_type: str,
                      device_id: UUID | None = None) -> UUID:
     validate_dsn(admin_dsn)
@@ -61,6 +88,12 @@ def main() -> int:
     runtime.add_argument("--output", type=Path, required=True)
     runtime.add_argument("--role", default="tlm_api")
     runtime.add_argument("--pooler-project-ref")
+    user_runtime = subparsers.add_parser('user-runtime')
+    user_runtime.add_argument('--output',type=Path,required=True)
+    user_runtime.add_argument('--role',default='tlm_user_api')
+    user_runtime.add_argument('--pooler-project-ref')
+    bootstrap = subparsers.add_parser('bootstrap-admin')
+    bootstrap.add_argument('--user-id',type=UUID,required=True)
     device = subparsers.add_parser("device")
     device.add_argument("--output", type=Path, required=True)
     device.add_argument("--system-type", required=True)
@@ -77,10 +110,14 @@ def main() -> int:
         if args.command == "runtime":
             provision_runtime(dsn, args.output, role=args.role,
                               pooler_project_ref=args.pooler_project_ref)
+        elif args.command == 'user-runtime':
+            provision_user_runtime(dsn,args.output,role=args.role,pooler_project_ref=args.pooler_project_ref)
+        elif args.command == 'bootstrap-admin':
+            bootstrap_admin(dsn,args.user_id)
         else:
             provision_device(dsn, args.output, system_type=args.system_type,
                              device_id=args.device_id)
-        print("Provisioning committed. Private configuration saved; no credentials printed.")
+        print("Provisioning committed. No credentials printed.")
         return 0
     except Exception as error:
         print(f"Provisioning failed ({type(error).__name__}). Any created configuration was retained. "

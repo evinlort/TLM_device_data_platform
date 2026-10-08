@@ -143,3 +143,10 @@ runtime/device, запустить API и установить реальный 
 PR, точный head SHA и соответствующий CI run. Не создавать ещё один
 self-referential handoff commit только ради записи текущего HEAD. Не merge PR,
 не удалять ветки и не менять remote Supabase без соответствующего указания.
+
+## Дополнение: доступ пользователей и учебные сессии
+
+Текущая реализация дополнения, TDD, provider contract и границы незавершённого
+remote deployment записаны в [SESSION_USER_ACCESS.md](SESSION_USER_ACCESS.md).
+Новый v2 contract — [PROTOCOL_V2.md](PROTOCOL_V2.md). Утверждения выше об отсутствии
+школ, пользовательской изоляции и dashboard относятся к исходному v1.

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TLM laboratory telemetry</title><link rel="stylesheet" href="/assets/style.css"><script src="/assets/app.js" defer></script></head>
+<body>
+<header><div><span class="eyebrow">TLM · LABORATORY PILOT</span><h1>Telemetry workspace</h1></div><div id="identity"></div></header>
+<main>
+<p id="notice" role="status" aria-live="polite"></p>
+<section id="authentication" class="panel narrow">
+<h2>Access your laboratory</h2><p>Register, then ask your administrator to approve your access.</p>
+<form id="auth-form"><label>Email<input id="email" name="email" type="email" autocomplete="username" required maxlength="254"></label>
+<label>Password<input id="password" name="password" type="password" autocomplete="current-password" required minlength="8" maxlength="1024"></label>
+<div class="actions"><button type="submit" name="action" value="login">Log in</button><button type="submit" name="action" value="register" class="secondary">Register</button></div></form>
+</section>
+<div id="workspace" hidden>
+<div class="toolbar"><p id="account-status"></p><div class="actions"><button id="reload" class="secondary">Refresh</button><button id="logout" class="secondary">Log out</button></div></div>
+<section id="pending" class="panel" hidden><h2>Awaiting administrator approval</h2><p>Your account is registered. An administrator must assign your role and school before you can view telemetry.</p></section>
+<section id="disabled" class="panel" hidden><h2>Access disabled</h2><p>Contact your administrator to restore access.</p></section>
+<div id="approved" hidden>
+<section class="panel"><div class="section-title"><h2>Sessions</h2><button id="global-history" class="secondary" hidden>All telemetry</button></div>
+<p>Participants are fixed when a session starts. A new group requires a new session.</p>
+<div class="table-scroll"><table><thead><tr><th>Session</th><th>Status</th><th>Students</th><th>Devices</th><th>Actions</th></tr></thead><tbody id="sessions"></tbody></table></div></section>
+<section id="session-editor" class="panel" hidden><h2 id="editor-title">Create session</h2><form id="session-form" class="grid">
+<label>Session name<input id="session-name" required maxlength="200"></label><label>Session school<select id="session-school" aria-label="Session school" required></select></label>
+<label>Students<select id="session-students" aria-label="Students" multiple required size="5"></select></label><label>Devices<select id="session-devices" aria-label="Devices" multiple required size="5"></select></label>
+<p class="help">Select one or more students and devices. Use Ctrl or Command to select several.</p>
+<div class="actions"><button type="submit" id="save-session">Create draft</button><button type="button" id="cancel-edit" class="secondary" hidden>Cancel edit</button></div></form></section>
+<section id="device-context" class="panel" hidden><h2>Device context</h2><p>The desired group is applied after a packet for that session reaches the server. Offline devices keep their last saved group. The last received packet may be a delayed replay.</p>
+<div class="table-scroll"><table><thead><tr><th>Device</th><th>Desired session</th><th>Delivery evidence</th><th>Last confirmed group</th><th>Last received session</th></tr></thead><tbody id="contexts"></tbody></table></div></section>
+<section id="history" class="panel" hidden><h2 id="history-title">Telemetry history</h2><p>Capture time is reported by the device. Received time records the first database insertion.</p>
+<div class="table-scroll"><table><thead><tr><th>Device</th><th>Captured</th><th>Received</th><th>Readings</th></tr></thead><tbody id="readings"></tbody></table></div>
+<div class="actions"><button id="history-back" class="secondary">Previous</button><button id="history-next" class="secondary">Next</button></div></section>
+<section id="administration" class="panel" hidden><h2>User access</h2><div class="table-scroll"><table><thead><tr><th>Email</th><th>Role</th><th>School</th><th>Status</th><th>Action</th></tr></thead><tbody id="users"></tbody></table></div>
+<h2>Schools</h2><form id="school-form" class="actions"><label>School name<input id="school-name" required maxlength="200"></label><button type="submit">Add school</button></form><ul id="schools"></ul>
+<h2>Device school bindings</h2><p>Register devices with the operator provisioning command, then assign their school here.</p><div class="table-scroll"><table><thead><tr><th>Device</th><th>School</th><th>Action</th></tr></thead><tbody id="bindings"></tbody></table></div></section>
+</div></div>
+</main><footer>TLM laboratory pilot · Session history</footer>
+</body></html>

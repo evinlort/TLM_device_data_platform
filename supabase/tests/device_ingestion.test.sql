@@ -8,8 +8,9 @@ SELECT has_table('tlm', 'device_credentials', 'credential registry exists');
 SELECT has_table('tlm', 'telemetry_messages', 'telemetry history exists');
 SELECT col_type_is('tlm', 'telemetry_messages', 'payload', 'jsonb', 'payload is jsonb');
 SELECT is((SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-           WHERE n.nspname = 'tlm' AND c.relkind = 'r' AND c.relrowsecurity),
-          3::bigint, 'all application tables enable RLS');
+           WHERE n.nspname = 'tlm' AND c.relkind = 'r' AND c.relrowsecurity
+             AND c.relname IN ('devices', 'device_credentials', 'telemetry_messages')),
+          3::bigint, 'all original ingestion tables enable RLS');
 SELECT ok(has_table_privilege('tlm_ingest', 'tlm.telemetry_messages', 'SELECT'),
           'backend can compare duplicate messages');
 SELECT ok(NOT has_schema_privilege('anon', 'tlm', 'USAGE'), 'anon has no schema access');

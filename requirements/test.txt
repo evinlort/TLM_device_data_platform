@@ -5,3 +5,8 @@ packaging==26.3
 pluggy==1.6.0
 pygments==2.21.0
 pytest==9.1.1
+
+# Browser integration uses the real local API/Auth/DB.
+playwright==1.63.0
+pyee==13.0.1
+greenlet==3.5.6

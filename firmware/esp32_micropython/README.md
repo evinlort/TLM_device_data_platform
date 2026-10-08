@@ -289,3 +289,21 @@ LIMIT 20;
 Supabase и не подключало плату. Последующее аппаратное испытание 03.10.2026
 проверило именно этот путь в лабораторной сети; production HTTPS на плате
 отдельно не подтверждён.
+
+## Session telemetry v2
+
+Set `TLM_API_URL` to the same TLM API origin with `/v2/telemetry` to enable
+session context. Copy the updated six source modules; preserve credentials,
+CA files, the outbox, and its adjacent `.context` / `.context.tmp` sidecar.
+The client gets a device-token-authenticated context before its first v2 sample,
+keeps the confirmed context offline, and fetches it before new online samples.
+There is no sensor read without an initial confirmed context.
+
+The sequential persist-then-ACK policy still applies. Existing v1 and v2 packets
+keep their original bytes and use their own versioned endpoint during replay.
+A changed session starts a new stream. Late packets retain their old session.
+Context corruption requires operator attention; no automatic format or null
+fallback is performed. Full protocol and operator setup:
+[PROTOCOL_V2.md](../../docs/device_ingestion/PROTOCOL_V2.md),
+[STAND_SETUP.md](../../docs/device_ingestion/STAND_SETUP.md).
+Host tests and bytecode compilation do not establish hardware execution of v2.

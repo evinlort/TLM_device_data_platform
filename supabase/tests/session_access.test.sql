@@ -1,0 +1,18 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
+SET LOCAL search_path = extensions, public;
+SELECT plan(12);
+SELECT has_table('tlm', 'schools', 'schools exists');
+SELECT has_table('tlm', 'user_profiles', 'user_profiles exists');
+SELECT has_table('tlm', 'sessions', 'sessions exists');
+SELECT has_table('tlm', 'session_participants', 'session_participants exists');
+SELECT has_table('tlm', 'session_devices', 'session_devices exists');
+SELECT has_table('tlm', 'active_device_sessions', 'active_device_sessions exists');
+SELECT has_table('tlm', 'device_contexts', 'device_contexts exists');
+SELECT has_column('tlm', 'telemetry_messages', 'session_id', 'session attribution exists');
+SELECT has_function('tlm', 'start_session', ARRAY['uuid']);
+SELECT has_function('tlm', 'finish_session', ARRAY['uuid']);
+SELECT ok(EXISTS (SELECT FROM pg_roles WHERE rolname = 'tlm_user' AND NOT rolcanlogin AND NOT rolbypassrls), 'Restricted user group exists');
+SELECT has_table('public', 'ingest_messages', 'ingest_messages exists');
+SELECT * FROM finish();
+ROLLBACK;

@@ -8,7 +8,7 @@ PostgreSQL storage adapter. Supabase — текущий PostgreSQL provider, н�
 Linux sensor adapter / ESP32 MicroPython + HC-SR04
   → номинальное измерение каждые 10 секунд
   → постоянная очередь (Linux: SQLite; ESP32: flash files)
-  → HTTPS POST /v1/telemetry
+  → HTTPS POST /v1/telemetry or /v2/telemetry
   → проверка token и device_id
   → PostgreSQL transaction / COMMIT
   → подтверждение устройству
@@ -16,6 +16,8 @@ Linux sensor adapter / ESP32 MicroPython + HC-SR04
 
 ## Начать здесь
 
+- [Сессии, доступ пользователей, TDD и handoff](docs/device_ingestion/SESSION_USER_ACCESS.md).
+- [Протокол v2 с сохранённой принадлежностью сессии](docs/device_ingestion/PROTOCOL_V2.md).
 - [Протокол v1 и границы пилота](docs/device_ingestion/PROTOCOL_V1.md).
 - [Установка, SQL, provisioning, API и Linux-агент](docs/device_ingestion/STAND_SETUP.md).
 - [Практический запуск с Supabase: миграции, TLS, provisioning, timeout и demo-запись](docs/device_ingestion/SUPABASE_BRINGUP_RU.md).
@@ -45,8 +47,9 @@ python3.11 -m venv .venv
 .venv/bin/python -m pytest -m 'not database'
 ```
 
-Полный suite требует одноразовую локальную Supabase/PostgreSQL и
-`TLM_TEST_ADMIN_DSN`. GitHub Actions поднимает её автоматически и выполняет
+Полный suite требует одноразовую локальную Supabase, включая Auth, и Chromium.
+Запуск: `.venv/bin/python -m playwright install chromium`, затем
+`.venv/bin/python scripts/test_local.py`. Без local конфигурации DB/Auth suite падает. GitHub Actions поднимает её автоматически и выполняет
 настоящие HTTP → PostgreSQL tests под ограниченным LOGIN. Новые ESP32 host tests
 используют те же исходники, которые загружаются по USB. Отдельный workflow
 компилирует шесть MicroPython-модулей закреплённым mpy-cross 1.29.0.
@@ -69,7 +72,9 @@ HC-SR04 на GPIO26/GPIO27 через делитель передал насто
 `demo_sensor:read` по-прежнему возвращает только тестовые показания. Не
 проверены все варианты ESP32/HC-SR04, production HTTPS на плате, длительный
 ресурс flash, устойчивость к потере питания, долгий offline и fleet scale.
-Нет dashboard, current_state, school/student isolation и управления оборудованием.
+Ветка session-user-access добавляет dashboard и доступ пользователей к сессиям.
+Current_state, команды оборудованию, retention и fleet guarantees отсутствуют.
+Удалённое развёртывание дополнения и hardware v2 пока не подтверждены.
 
 Секреты не коммитить. Required CI не подключается к remote Supabase и не требует
 физической платы. История исходной CI-подготовки сохранена в `docs/ci/`.

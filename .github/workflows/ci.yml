@@ -101,6 +101,9 @@ jobs:
       - name: Check dependency consistency
         run: python -m pip check
 
+      - name: Install browser for real dashboard tests
+        run: python -m playwright install --with-deps chromium
+
       - name: Start local Supabase
         run: npx --no-install supabase start >/dev/null
 
@@ -119,10 +122,8 @@ jobs:
 
       - name: Run Python integration flow
         run: |
-          TLM_TEST_ADMIN_DSN="$(python -c 'import json, subprocess; print(json.loads(subprocess.check_output(["npx", "--no-install", "supabase", "status", "-o", "json"], stderr=subprocess.DEVNULL))["DB_URL"])')"
-          export TLM_TEST_ADMIN_DSN
           set +e
-          python -m pytest \
+          python scripts/test_local.py \
             --junitxml=test-results/local-integration/pytest.xml 2>&1 \
             | tee test-results/local-integration/pytest.log
           pytest_exit_code=${PIPESTATUS[0]}

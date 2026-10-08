@@ -4,12 +4,15 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+from uuid import UUID
 from typing import Protocol
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import ClientDisconnect
+
+from .telemetry_v2 import TelemetryV2
 
 from .telemetry_v1 import (
     MAX_BODY_BYTES, AuthenticationFailed, DeviceMismatch, IngestReceipt,
@@ -33,20 +36,28 @@ async def _read_body(request: Request) -> bytes:
     return bytes(body)
 
 
-def create_app(repository: TelemetryRepository | None = None) -> FastAPI:
+def create_app(repository: TelemetryRepository | None = None, *, user_repository=None,
+               auth_provider=None, cookie_secure=True, public_origin=None) -> FastAPI:
     if repository is None:
         from .postgres_ingestion import PostgresTelemetryRepository
         dsn = os.environ.get("TLM_DATABASE_DSN")
         if not dsn:
             raise RuntimeError("TLM_DATABASE_DSN is required")
         repository = PostgresTelemetryRepository(dsn)
-    app = FastAPI(title="TLM laboratory ingestion v1")
+    app = FastAPI(title="TLM laboratory telemetry")
+    if (user_repository is None) != (auth_provider is None):
+        raise ValueError("User repository and Auth provider are required together")
+    if user_repository is not None:
+        from .user_api import install_user_routes
+        install_user_routes(app, user_repository, auth_provider,
+                            cookie_secure=cookie_secure, public_origin=public_origin)
 
     @app.get("/health/live")
     def live():
         # Liveness deliberately does not claim database readiness.
         return {"status": "alive"}
 
+    @app.post("/v2/telemetry")
     @app.post("/v1/telemetry")
     async def ingest(request: Request):
         authorization = request.headers.get("authorization", "")
@@ -64,7 +75,7 @@ def create_app(repository: TelemetryRepository | None = None) -> FastAPI:
                 raise HTTPException(413, "Message too large")
         try:
             body = await asyncio.wait_for(_read_body(request), timeout=10)
-            message = TelemetryV1.parse(body)
+            message = (TelemetryV2 if request.url.path == "/v2/telemetry" else TelemetryV1).parse(body)
             receipt = await run_in_threadpool(repository.accept, token, message)
         except (TimeoutError, ClientDisconnect):
             raise HTTPException(408, "Incomplete request") from None
@@ -85,5 +96,19 @@ def create_app(repository: TelemetryRepository | None = None) -> FastAPI:
             "device_id": str(receipt.device_id), "message_id": str(receipt.message_id),
             "received_at": receipt.received_at.isoformat(),
         })
+
+    @app.get("/v2/devices/{device_id}/context")
+    async def context(device_id: UUID, request: Request):
+        scheme, _, token = request.headers.get("authorization", "").partition(" ")
+        if scheme.lower() != "bearer" or not _TOKEN.fullmatch(token):
+            raise HTTPException(401, "Invalid device credential")
+        try:
+            return await run_in_threadpool(repository.context, token, device_id)
+        except AuthenticationFailed:
+            raise HTTPException(401, "Invalid device credential") from None
+        except DeviceMismatch:
+            raise HTTPException(403, "Credential does not authorize this device") from None
+        except StorageUnavailable:
+            raise HTTPException(503, "Storage unavailable") from None
 
     return app
