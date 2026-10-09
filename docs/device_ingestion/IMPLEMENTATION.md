@@ -137,6 +137,49 @@ runtime/device, запустить API и установить реальный 
 передал реальные `distance_cm` через TLM API в Supabase. Подробности и границы:
 [ESP32_REAL_HARDWARE_BRINGUP_RU.md](ESP32_REAL_HARDWARE_BRINGUP_RU.md).
 
+## Руководство пользователя API — 09.10.2026
+
+Руководство подготовлено отдельным локальным коммитом
+`2606ee5a093a41a9a0c6491b00bf80a8cdce88a0`. Руководство и правила исключения
+локальных secrets/device tooling отправлены в `feat/api-guide-and-local-ignores`
+для объединения в `main` через PR #7. Эта запись описывает подготовку и отправку
+изменений; фактическое слияние проверяется по Git refs и состоянию PR.
+Исходный API проверен на `main` commit
+`f6d9182be2a4790d6b5773998d7aa28d3b0ec251`; ветка
+`feat/session-user-access` на commit `480d0cdf6f533c025f781193f3ce7b1ed4ea5099`
+на момент проверки не объединена. Поэтому
+[API_GUIDE_RU.md](API_GUIDE_RU.md) полностью описывает действующий контракт
+`main`, а Auth/session/v2 дополнение обозначает отдельно как разработку.
+В README добавлена ссылка на руководство.
+
+Структура опирается на прочитанные web-источники Diátaxis, GitHub REST API
+getting started и OpenAPI paths/security: назначение, первый запрос,
+справочник, инструкции, объяснение ACK/retry, диагностика. Ссылки на источники
+сохранены в самом руководстве. Фактические routes, headers, JSON validation,
+credentials, duplicate/conflict, SQL storage и client policies сверены
+с исходниками. Отдельно объяснено ограничение generated OpenAPI: он не описывает
+полный ручной telemetry contract и не заменяет справочник пользователя.
+
+При чтении GitHub check-runs для точного исходного `main` SHA и SHA дополнения
+получено `total_count=0`. Это не результат новых CI-проверок и не перенос
+исторического успеха PR на эти commits. В этой задаче изменяется только
+документация; remote Supabase, hardware и deployment не проверяются.
+
+Локальная проверка документации: 46 relative links/anchors, 32 fenced blocks,
+15 Bash fragments (`bash -n`), два Python fragments (`compile`), пять JSON
+examples (`json.loads`), telemetry example через настоящий `TelemetryV1.parse`.
+Проверены все шесть route definitions, GET/HEAD страниц документации,
+health response, отсутствие корневого dashboard в `main` и фактические
+ограничения OpenAPI. Эти HTTP-проверки не подключаются к БД.
+
+Команда `.venv/bin/python -m pytest -q -o pythonpath=src
+-o faulthandler_timeout=20 tests/test_telemetry_v1.py tests/test_ingestion_api.py`
+завершилась: **30 passed**. В sandbox FastAPI TestClient зависал; первоначальные
+запуски остановлены, те же проверки успешно выполнены вне sandbox.
+`git diff --check` проходит. Это targeted contract/documentation verification,
+не новый полный database/CI/hardware результат; assertions и DB-тесты
+не менялись. Изменены только руководство, README и эта запись handoff.
+
 ## Проверка следующей сессии
 
 Прочитать AGENTS.md и ingestion documents. Проверить фактические refs, текущий
