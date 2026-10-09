@@ -180,6 +180,53 @@ health response, отсутствие корневого dashboard в `main` и 
 не новый полный database/CI/hardware результат; assertions и DB-тесты
 не менялись. Изменены только руководство, README и эта запись handoff.
 
+## Tutorials пользовательской аутентификации и Dashboard — 09.10.2026
+
+Пользователь явно запросил подготовить оба tutorial в `main`, создать коммит
+после завершения и выполнить push. Исходная локальная/remote main при проверке
+равна `3864893dc5d76a9a5f011e1a3a60a115953413d6`; PR #7 объединён.
+Session-user-access code остаётся отдельным snapshot
+`480d0cdf6f533c025f781193f3ce7b1ed4ea5099`. Оба новых документа указывают эту
+область применимости, не объявляют дополнение внедрённым в main или удалённо.
+У обоих точных исходных SHA GitHub check-runs вернул `total_count=0`.
+Исторические test results не перенесены на новое состояние.
+
+[AUTHENTICATION_TUTORIAL_RU.md](AUTHENTICATION_TUTORIAL_RU.md) описывает
+browser registration/login, pending approval, роли/школу/блокировку,
+cookie/CSRF rotation, refresh/logout, все шесть Auth endpoints,
+приватный curl workflow и user runtime/bootstrap-admin.
+[DASHBOARD_TUTORIAL_RU.md](DASHBOARD_TUTORIAL_RU.md) описывает все экраны,
+role-specific controls, admin preparation, draft/active/ended lifecycle,
+roster immutability, paging и v2 delivery evidence после позднего replay.
+Оба tutorial связаны с README и API guide. При сверке исправлен ошибочный
+navigation path device context в API guide: фактически дополнение использует
+`GET /v2/devices/{device_id}/context`.
+
+Факты сверены с branch snapshot user_api.py, user_access.py, serve_api.py,
+provision.py, HTML/JavaScript Dashboard, SQL migration и существующими
+Auth/browser test scenarios. UI Refresh не вызывает history reload и
+не является auto-polling; это явно объяснено. Registration helper запускается
+отдельным Python-файлом, чтобы interactive input не конфликтовал с heredoc stdin.
+Provider/session/logout пояснения проверены по официальным Supabase docs;
+полный TLM contract определяется исходниками, не общей документацией provider.
+
+Проверка документов: 81 local link/anchor и 15 ссылок на файлы/anchors точного
+snapshot проверены через local Git objects; 25 Bash fragments проходят `bash -n`,
+четыре Python fragments компилируются, десять JSON examples разбираются.
+Три новых request examples проверены настоящими Pydantic models дополнения,
+37 названий UI — HTML/JavaScript; route references сверены с declarations.
+CSRF helper выполнен с отдельным TEST cookie jar, включая HttpOnly entry;
+он формирует ожидаемый header без вывода session secrets.
+`git diff --check` проходит. Это document/static verification без обращения
+к Auth, БД или hardware; исходники и существующие tests не изменены.
+
+Перед публикацией прочитана фактическая classic protection main:
+required PR, `enforce_admins=true`, required contexts `Python 3.11` и
+`Local Supabase integration`, strict status checks. Ruleset API вернул пустой
+список, что не отменяет classic protection. Эта задача не меняет защиту ветки.
+Результат нового push/CI нужно проверять по фактическому опубликованному SHA;
+статические проверки документации не подменяют required integration CI.
+
 ## Проверка следующей сессии
 
 Прочитать AGENTS.md и ingestion documents. Проверить фактические refs, текущий

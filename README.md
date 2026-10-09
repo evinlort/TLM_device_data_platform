@@ -17,6 +17,8 @@ Linux sensor adapter / ESP32 MicroPython + HC-SR04
 ## Начать здесь
 
 - [Полное руководство TLM API: endpoints, аутентификация, отправка и ошибки](docs/device_ingestion/API_GUIDE_RU.md).
+- [Tutorial регистрации и входа пользователей — дополнение session-user-access](docs/device_ingestion/AUTHENTICATION_TUTORIAL_RU.md).
+- [Tutorial Dashboard: экраны, роли и учебные сессии — дополнение session-user-access](docs/device_ingestion/DASHBOARD_TUTORIAL_RU.md).
 - [Протокол v1 и границы пилота](docs/device_ingestion/PROTOCOL_V1.md).
 - [Установка, SQL, provisioning, API и Linux-агент](docs/device_ingestion/STAND_SETUP.md).
 - [Практический запуск с Supabase: миграции, TLS, provisioning, timeout и demo-запись](docs/device_ingestion/SUPABASE_BRINGUP_RU.md).

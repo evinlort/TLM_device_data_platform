@@ -1148,9 +1148,14 @@ Auth, user profiles, schools, учебными сессиями, device context 
 | `/v1/auth/...` | Пользовательские register/login/refresh/logout/me с cookie authentication |
 | `/v1/admin/...` | Административная работа с users/schools/devices |
 | `/v1/sessions...` | Создание и просмотр сессий, состав, start/finish и чтение telemetry |
-| `GET /v1/device/context` | Device token получает текущий context назначения |
+| `GET /v2/devices/{device_id}/context` | Device token получает текущий context назначения |
 | `POST /v2/telemetry` | Сообщение с зафиксированной принадлежностью к session |
 | `/` и dashboard assets | Пользовательский интерфейс дополнения |
+
+Пошаговые руководства по этому дополнению:
+
+- [Регистрация, вход, одобрение, cookies/CSRF, refresh и logout](AUTHENTICATION_TUTORIAL_RU.md).
+- [Dashboard: экраны, роли, создание сессии и чтение истории](DASHBOARD_TUTORIAL_RU.md).
 
 Этот перечень — навигация по разработке, не контракт работающего `main`.
 Cookie authentication пользователей не заменяет device Bearer token.
