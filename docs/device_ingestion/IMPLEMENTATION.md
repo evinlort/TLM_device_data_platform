@@ -227,6 +227,19 @@ required PR, `enforce_admins=true`, required contexts `Python 3.11` и
 Результат нового push/CI нужно проверять по фактическому опубликованному SHA;
 статические проверки документации не подменяют required integration CI.
 
+Перед разрешённым пользователем объединением PR #8 проверено замечание Sourcery
+к snapshot `444427c57f4a7dffef1ab7eda8fb5fe645e3fe9d`: pilot без email
+confirmation не подтверждает владение заявленным email. Tutorial теперь требует
+независимой операторской проверки личности по заранее известному доверенному
+каналу и сопоставления authenticated user UUID с pending-профилем до назначения
+роли/approval, включая bootstrap первого admin. Dashboard tutorial указывает
+тот же порядок. До проверки профиль остаётся pending без роли.
+Это уточнение инструкции, не новая автоматическая identity/email verification
+в API и не изменение выбранного pilot Auth flow. После уточнения повторно
+проверены 83 local links/anchors, 15 snapshot links, Bash/Python/JSON fragments,
+три request models, 37 UI labels и CSRF helper. `git diff --check` проходит;
+required CI должен пройти на новом head SHA перед merge.
+
 ## Проверка следующей сессии
 
 Прочитать AGENTS.md и ingestion documents. Проверить фактические refs, текущий
