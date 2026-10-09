@@ -1,4 +1,7 @@
 .venv/
+.venv-device-tool/
+.venv-device-tools/
+.secrets/
 __pycache__/
 .pytest_cache/
 .coverage
